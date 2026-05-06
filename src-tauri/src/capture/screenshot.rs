@@ -27,6 +27,10 @@ impl ScreenshotStorage {
         self.step_path_for_variant(session_id, step_number, "marked")
     }
 
+    pub fn edited_path_for_step(&self, session_id: &str, step_number: i64) -> PathBuf {
+        self.step_path_for_variant(session_id, step_number, "edited")
+    }
+
     fn step_path_for_variant(&self, session_id: &str, step_number: i64, variant: &str) -> PathBuf {
         self.root
             .join(format!("session-{}", safe_path_segment(session_id)))

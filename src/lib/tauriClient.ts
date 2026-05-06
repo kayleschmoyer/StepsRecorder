@@ -59,8 +59,13 @@ export interface StepScreenshotPreview {
   originalScreenshotPath: string;
   editedScreenshotPath?: string;
   displayedScreenshotPath?: string;
-  previewKind: 'missing' | 'original' | 'click_marker';
+  previewKind: 'missing' | 'original' | 'click_marker' | 'edited';
   dataUrl?: string;
+}
+
+export interface SaveEditedScreenshotInput {
+  stepId: string;
+  screenshotDataUrl: string;
 }
 
 export interface ScreenshotEdit {
@@ -229,6 +234,10 @@ type StepsRecorderCommands = {
     request: { input: GetStepScreenshotPreviewInput };
     response: StepScreenshotPreview;
   };
+  save_edited_screenshot: {
+    request: { input: SaveEditedScreenshotInput };
+    response: RecordingStep;
+  };
   update_session: {
     request: { input: UpdateSessionInput };
     response: RecordingSession;
@@ -286,6 +295,7 @@ export const tauriClient = {
   listSessions: (input?: ListSessionsInput) => invokeTauriCommand('list_sessions', input ? { input } : undefined),
   getSession: (input: GetSessionInput) => invokeTauriCommand('get_session', { input }),
   getStepScreenshotPreview: (input: GetStepScreenshotPreviewInput) => invokeTauriCommand('get_step_screenshot_preview', { input }),
+  saveEditedScreenshot: (input: SaveEditedScreenshotInput) => invokeTauriCommand('save_edited_screenshot', { input }),
   updateSession: (input: UpdateSessionInput) => invokeTauriCommand('update_session', { input }),
   updateStep: (input: UpdateStepInput) => invokeTauriCommand('update_step', { input }),
   deleteStep: (input: DeleteStepInput) => invokeTauriCommand('delete_step', { input }),
