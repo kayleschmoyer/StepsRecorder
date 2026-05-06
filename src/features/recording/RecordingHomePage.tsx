@@ -1,14 +1,17 @@
+import { useEffect, useState } from 'react';
 import { Button } from '../../components/button/Button';
 import { Card } from '../../components/card/Card';
 import { PageSection } from '../../components/layout/PageSection';
+import { formatDateLabel } from '../../lib/dateFormat';
+import { tauriClient } from '../../lib/tauriClient';
 import type { RecentSessionSummary } from './recordingTypes';
 import { RecordingControlBar } from './RecordingControlBar';
 import { RecordingStatusPanel } from './RecordingStatusPanel';
 import styles from './RecordingHomePage.module.css';
 
-const recentSessions: RecentSessionSummary[] = [
+const emptyRecentSessions: RecentSessionSummary[] = [
   {
-    id: 'placeholder-session-1',
+    id: 'empty-session-list',
     title: 'No saved sessions yet',
     stepCount: 0,
     updatedAtLabel: 'Start a recording to populate this list',
@@ -35,6 +38,45 @@ const workflowCards = [
 ];
 
 export function RecordingHomePage() {
+  const [recentSessions, setRecentSessions] = useState<RecentSessionSummary[]>(emptyRecentSessions);
+  const [recentSessionsStatus, setRecentSessionsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    tauriClient
+      .listSessions({ limit: 5, includeArchived: false })
+      .then((sessions) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setRecentSessions(
+          sessions.length > 0
+            ? sessions.map((session) => ({
+                id: session.id,
+                title: session.title,
+                stepCount: session.stepCount,
+                updatedAtLabel: formatSessionDateLabel(session.endedAt ?? session.startedAt),
+              }))
+            : emptyRecentSessions,
+        );
+        setRecentSessionsStatus('ready');
+      })
+      .catch(() => {
+        if (!isMounted) {
+          return;
+        }
+
+        setRecentSessions(emptyRecentSessions);
+        setRecentSessionsStatus('error');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
@@ -85,6 +127,12 @@ export function RecordingHomePage() {
             </div>
             <Button variant="text">View all</Button>
           </div>
+          {recentSessionsStatus === 'loading' && (
+            <p className={styles.sessionStatus}>Loading recent sessions…</p>
+          )}
+          {recentSessionsStatus === 'error' && (
+            <p className={styles.sessionStatus}>Recent sessions load when the app is running in Tauri.</p>
+          )}
           <ul className={styles.sessionList}>
             {recentSessions.map((session) => (
               <li className={styles.sessionItem} key={session.id}>
@@ -110,4 +158,14 @@ export function RecordingHomePage() {
       </section>
     </div>
   );
+}
+
+function formatSessionDateLabel(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return formatDateLabel(date);
 }
