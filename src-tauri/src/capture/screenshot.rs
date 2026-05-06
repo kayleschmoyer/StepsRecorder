@@ -19,10 +19,6 @@ impl ScreenshotStorage {
         Self { root }
     }
 
-    pub fn root(&self) -> &Path {
-        &self.root
-    }
-
     pub fn original_path_for_step(&self, session_id: &str, step_number: i64) -> PathBuf {
         self.step_path_for_variant(session_id, step_number, "original")
     }
