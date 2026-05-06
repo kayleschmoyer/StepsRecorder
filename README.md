@@ -136,3 +136,12 @@ Before writing code, read these files in this order:
 13. `docs/ACCESSIBILITY.md`
 14. `docs/DEPLOYMENT.md`
 15. `docs/ROADMAP.md`
+
+## Current Development Commands
+
+```bash
+npm install
+npm run dev
+npm run build
+npm run tauri:dev
+```

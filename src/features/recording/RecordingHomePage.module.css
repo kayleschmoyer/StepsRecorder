@@ -1,0 +1,200 @@
+.page {
+  display: grid;
+  gap: var(--spacing-105);
+}
+
+.hero {
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-20);
+  padding: var(--spacing-105) var(--spacing-24) var(--spacing-40);
+  text-align: center;
+}
+
+.eyebrow,
+.panelEyebrow {
+  margin: 0;
+  color: var(--color-silver-text);
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  text-transform: uppercase;
+}
+
+.title {
+  max-width: 880px;
+  margin: 0;
+  color: var(--color-pure-white);
+  font-family: var(--font-ivy-presto);
+  font-size: clamp(var(--text-heading-lg), 8vw, var(--text-display));
+  font-weight: var(--font-weight-medium);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+}
+
+.description {
+  max-width: 720px;
+  margin: 0;
+  color: var(--color-porcelain-text);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+}
+
+.heroActions {
+  display: grid;
+  justify-items: center;
+  gap: var(--spacing-16);
+  margin-top: var(--spacing-12);
+}
+
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--spacing-16);
+}
+
+.workflowCard,
+.recentPanel,
+.privacyPanel {
+  display: grid;
+  gap: var(--spacing-16);
+  padding: var(--card-padding);
+}
+
+.workflowCard {
+  align-content: start;
+  background: var(--color-slate-gray);
+}
+
+.cardAccent {
+  width: var(--spacing-40);
+  height: var(--spacing-6);
+  border-radius: var(--radius-pill);
+  background: var(--gradient-golden-gradient);
+}
+
+.cardTitle,
+.panelTitle {
+  margin: 0;
+  color: var(--color-pure-white);
+  font-size: var(--text-subheading);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-subheading);
+  letter-spacing: var(--tracking-subheading);
+}
+
+.cardDescription {
+  margin: 0;
+  color: var(--color-white-frost);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+}
+
+.dashboardGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: var(--spacing-16);
+}
+
+.recentPanel {
+  background: var(--color-charcoal-canvas);
+}
+
+.privacyPanel {
+  align-content: start;
+  background: var(--color-obsidian-surface);
+  border: 1px solid var(--color-ash-text);
+}
+
+.panelHeader {
+  display: flex;
+  gap: var(--spacing-16);
+  align-items: start;
+  justify-content: space-between;
+}
+
+.sessionList {
+  display: grid;
+  gap: var(--spacing-8);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.sessionItem {
+  display: flex;
+  gap: var(--spacing-16);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-16);
+  border-radius: var(--radius-md);
+  background: var(--color-pewter-accent);
+}
+
+.sessionItem strong,
+.sessionItem small {
+  display: block;
+}
+
+.sessionItem strong {
+  color: var(--color-pure-white);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
+}
+
+.sessionItem small,
+.stepCount {
+  color: var(--color-stone-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+}
+
+.stepCount {
+  white-space: nowrap;
+}
+
+.settingsLink {
+  justify-self: start;
+  padding: var(--spacing-6) var(--spacing-10);
+  border: 1px solid var(--color-pure-white);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-pure-white);
+  font-size: var(--text-body-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
+  text-decoration: none;
+}
+
+.settingsLink:hover {
+  background: var(--gradient-golden-hover);
+}
+
+@media (max-width: 960px) {
+  .cardGrid,
+  .dashboardGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    gap: var(--spacing-40);
+  }
+
+  .hero {
+    padding: var(--spacing-40) 0;
+  }
+
+  .cardGrid,
+  .dashboardGrid {
+    grid-template-columns: 1fr;
+  }
+}
