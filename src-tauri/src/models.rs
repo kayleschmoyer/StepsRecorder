@@ -221,6 +221,7 @@ pub struct ReorderStepsResult {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSettingsInput {
+    pub screenshot_mode: Option<String>,
     pub click_debounce_ms: Option<i64>,
     pub include_timestamps_in_export: Option<bool>,
     pub include_click_markers: Option<bool>,

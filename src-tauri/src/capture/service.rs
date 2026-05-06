@@ -12,12 +12,12 @@ use crate::{
         default_capture_adapter,
         screenshot::{
             capture_original_screenshot_for_step, generate_marked_screenshot_for_step,
-            ScreenshotStorage,
+            ScreenshotCaptureMode, ScreenshotStorage,
         },
         ActiveCaptureSession, CaptureState, SharedCaptureState, SharedCaptureStateHandle,
     },
     models::AppErrorResponse,
-    repositories::steps,
+    repositories::{settings, steps},
 };
 
 pub struct CaptureService {
@@ -470,16 +470,27 @@ fn capture_and_attach_screenshot(
     event: &CapturedClickEvent,
     step: &crate::models::RecordingStep,
 ) {
-    match capture_original_screenshot_for_step(storage, event, step.step_number) {
+    let mode = settings::get_settings(connection)
+        .map(|settings| ScreenshotCaptureMode::from_setting(&settings.screenshot_mode))
+        .unwrap_or_else(|error| {
+            eprintln!(
+                "capture.screenshot event=settings_fallback fallback_mode=clicked_monitor reason_code={} reason_message={}",
+                error.code, error.message
+            );
+            ScreenshotCaptureMode::ClickedMonitor
+        });
+
+    match capture_original_screenshot_for_step(storage, event, step.step_number, mode) {
         Ok(capture) => {
             let path = capture.path.to_string_lossy().to_string();
             match steps::update_original_screenshot_path(connection, &step.id, &path) {
                 Ok(updated_step) => {
                     println!(
-                        "capture.screenshot event=written session_id={} step_id={} step_number={} width={} height={} path={}",
+                        "capture.screenshot event=written session_id={} step_id={} step_number={} mode={} width={} height={} path={}",
                         updated_step.session_id,
                         updated_step.id,
                         updated_step.step_number,
+                        mode.as_str(),
                         capture.width,
                         capture.height,
                         path

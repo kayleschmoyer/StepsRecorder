@@ -86,7 +86,8 @@
   font-weight: var(--font-weight-semibold);
 }
 
-.field input {
+.field input,
+.field select {
   width: 100%;
   min-height: var(--spacing-40);
   padding: 0 var(--spacing-14);

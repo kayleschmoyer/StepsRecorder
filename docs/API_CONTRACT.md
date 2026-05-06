@@ -365,7 +365,7 @@ None.
 
 ```typescript
 export interface AppSettings {
-  screenshotMode: "clicked_monitor";
+  screenshotMode: "clicked_monitor" | "clicked_window";
   clickDebounceMs: number;
   includeTimestampsInExport: boolean;
   includeClickMarkers: boolean;
@@ -382,6 +382,7 @@ Updates app settings.
 
 ```typescript
 export interface UpdateSettingsInput {
+  screenshotMode?: "clicked_monitor" | "clicked_window";
   clickDebounceMs?: number;
   includeTimestampsInExport?: boolean;
   includeClickMarkers?: boolean;
@@ -394,7 +395,7 @@ export interface UpdateSettingsInput {
 
 ```typescript
 export interface AppSettings {
-  screenshotMode: "clicked_monitor";
+  screenshotMode: "clicked_monitor" | "clicked_window";
   clickDebounceMs: number;
   includeTimestampsInExport: boolean;
   includeClickMarkers: boolean;

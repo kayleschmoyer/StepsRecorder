@@ -34,7 +34,29 @@ impl ScreenshotStorage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreenshotCaptureMode {
+    ClickedMonitor,
+    ClickedWindow,
+}
+
+impl ScreenshotCaptureMode {
+    pub fn from_setting(value: &str) -> Self {
+        match value {
+            "clicked_window" => Self::ClickedWindow,
+            "clicked_monitor" => Self::ClickedMonitor,
+            _ => Self::ClickedMonitor,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ClickedMonitor => "clicked_monitor",
+            Self::ClickedWindow => "clicked_window",
+        }
+    }
+}
+
 pub struct ScreenshotCaptureResult {
     pub path: PathBuf,
     pub width: u32,
@@ -47,6 +69,7 @@ pub fn capture_original_screenshot_for_step(
     storage: &ScreenshotStorage,
     event: &CapturedClickEvent,
     step_number: i64,
+    mode: ScreenshotCaptureMode,
 ) -> Result<ScreenshotCaptureResult, AppErrorResponse> {
     let output_path = storage.original_path_for_step(&event.session_id, step_number);
     if let Some(parent) = output_path.parent() {
@@ -59,7 +82,7 @@ pub fn capture_original_screenshot_for_step(
         })?;
     }
 
-    let image = capture_visible_monitor(event.x, event.y)?;
+    let image = capture_image_for_mode(event, mode)?;
     write_png(&output_path, image.width, image.height, &image.rgba)?;
 
     Ok(ScreenshotCaptureResult {
@@ -101,6 +124,25 @@ pub fn generate_marked_screenshot_for_step(
         marker_x,
         marker_y,
     })
+}
+
+fn capture_image_for_mode(
+    event: &CapturedClickEvent,
+    mode: ScreenshotCaptureMode,
+) -> Result<CapturedImage, AppErrorResponse> {
+    match mode {
+        ScreenshotCaptureMode::ClickedMonitor => capture_visible_monitor(event.x, event.y),
+        ScreenshotCaptureMode::ClickedWindow => match capture_clicked_window(event.x, event.y) {
+            Ok(image) => Ok(image),
+            Err(error) => {
+                eprintln!(
+                    "capture.screenshot event=fallback requested_mode=clicked_window fallback_mode=clicked_monitor reason_code={} reason_message={}",
+                    error.code, error.message
+                );
+                capture_visible_monitor(event.x, event.y)
+            }
+        },
+    }
 }
 
 struct CapturedImage {
@@ -338,6 +380,163 @@ fn safe_path_segment(value: &str) -> String {
 }
 
 #[cfg(windows)]
+fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorResponse> {
+    use std::ptr::null_mut;
+    use windows_sys::Win32::{
+        Foundation::POINT,
+        Graphics::Gdi::{GetDC, ReleaseDC},
+        UI::{
+            HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
+            WindowsAndMessaging::{
+                GetAncestor, IsIconic, IsWindowVisible, WindowFromPoint, GA_ROOT,
+            },
+        },
+    };
+
+    let previous_dpi_context =
+        unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+
+    let result = (|| {
+        let point = POINT {
+            x: clamp_i64_to_i32(x),
+            y: clamp_i64_to_i32(y),
+        };
+        let clicked = unsafe { WindowFromPoint(point) };
+        if clicked.is_null() {
+            return Err(AppErrorResponse::new(
+                "screenshot_window_error",
+                "The clicked window could not be resolved from the click point.",
+            ));
+        }
+
+        let root = unsafe { GetAncestor(clicked, GA_ROOT) };
+        let window = if root.is_null() { clicked } else { root };
+        validate_capture_window(window)?;
+
+        let rect = visible_window_rect(window)?;
+        if point.x < rect.left
+            || point.x >= rect.right
+            || point.y < rect.top
+            || point.y >= rect.bottom
+        {
+            return Err(AppErrorResponse::new(
+                "screenshot_window_error",
+                "The click point was outside the resolved top-level window bounds.",
+            ));
+        }
+
+        let width_i32 = rect.right.saturating_sub(rect.left);
+        let height_i32 = rect.bottom.saturating_sub(rect.top);
+        if width_i32 <= 0 || height_i32 <= 0 {
+            return Err(AppErrorResponse::new(
+                "screenshot_window_error",
+                "The resolved window bounds were empty.",
+            ));
+        }
+
+        let width = width_i32 as u32;
+        let height = height_i32 as u32;
+        let screen_dc = unsafe { GetDC(null_mut()) };
+        if screen_dc.is_null() {
+            return Err(AppErrorResponse::new(
+                "screenshot_capture_error",
+                "The screen device context could not be opened for clicked-window capture.",
+            ));
+        }
+
+        let capture = unsafe {
+            capture_dc_region(
+                screen_dc,
+                rect.left,
+                rect.top,
+                width_i32,
+                height_i32,
+                width,
+                height,
+                x.saturating_sub(i64::from(rect.left))
+                    .clamp(0, i64::from(width.saturating_sub(1))) as u32,
+                y.saturating_sub(i64::from(rect.top))
+                    .clamp(0, i64::from(height.saturating_sub(1))) as u32,
+            )
+        };
+        unsafe {
+            ReleaseDC(null_mut(), screen_dc);
+        }
+        capture
+    })();
+
+    if !previous_dpi_context.is_null() {
+        unsafe {
+            SetThreadDpiAwarenessContext(previous_dpi_context);
+        }
+    }
+
+    result
+}
+
+#[cfg(windows)]
+fn validate_capture_window(
+    window: windows_sys::Win32::Foundation::HWND,
+) -> Result<(), AppErrorResponse> {
+    if window.is_null() {
+        return Err(AppErrorResponse::new(
+            "screenshot_window_error",
+            "The resolved top-level window was unavailable.",
+        ));
+    }
+
+    if unsafe { IsWindowVisible(window) } == 0 {
+        return Err(AppErrorResponse::new(
+            "screenshot_window_error",
+            "The clicked window is not visible and will not be captured.",
+        ));
+    }
+
+    if unsafe { IsIconic(window) } != 0 {
+        return Err(AppErrorResponse::new(
+            "screenshot_window_error",
+            "The clicked window is minimized and will not be captured.",
+        ));
+    }
+
+    Ok(())
+}
+
+#[cfg(windows)]
+fn visible_window_rect(
+    window: windows_sys::Win32::Foundation::HWND,
+) -> Result<windows_sys::Win32::Foundation::RECT, AppErrorResponse> {
+    use std::{mem::size_of, mem::zeroed};
+    use windows_sys::Win32::{
+        Foundation::RECT,
+        Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS},
+        UI::WindowsAndMessaging::GetWindowRect,
+    };
+
+    let mut rect = unsafe { zeroed::<RECT>() };
+    let dwm_ok = unsafe {
+        DwmGetWindowAttribute(
+            window,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut rect as *mut RECT as *mut _,
+            size_of::<RECT>() as u32,
+        )
+    };
+
+    if dwm_ok != 0 || rect.right <= rect.left || rect.bottom <= rect.top {
+        let ok = unsafe { GetWindowRect(window, &mut rect) };
+        if ok == 0 {
+            return Err(AppErrorResponse::new(
+                "screenshot_window_error",
+                "The clicked window bounds could not be read.",
+            ));
+        }
+    }
+
+    Ok(rect)
+}
+
+#[cfg(windows)]
 fn capture_visible_monitor(x: i64, y: i64) -> Result<CapturedImage, AppErrorResponse> {
     use std::{
         mem::{size_of, zeroed},
@@ -532,6 +731,14 @@ fn clamp_i64_to_i32(value: i64) -> i32 {
 }
 
 #[cfg(not(windows))]
+fn capture_clicked_window(_x: i64, _y: i64) -> Result<CapturedImage, AppErrorResponse> {
+    Err(AppErrorResponse::new(
+        "screenshot_unsupported_platform",
+        "Clicked-window screenshot capture is only implemented for Windows in Step 11.",
+    ))
+}
+
+#[cfg(not(windows))]
 fn capture_visible_monitor(_x: i64, _y: i64) -> Result<CapturedImage, AppErrorResponse> {
     Err(AppErrorResponse::new(
         "screenshot_unsupported_platform",
@@ -542,6 +749,26 @@ fn capture_visible_monitor(_x: i64, _y: i64) -> Result<CapturedImage, AppErrorRe
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn screenshot_capture_mode_defaults_unknown_values_to_clicked_monitor() {
+        assert_eq!(
+            ScreenshotCaptureMode::from_setting("clicked_monitor"),
+            ScreenshotCaptureMode::ClickedMonitor
+        );
+        assert_eq!(
+            ScreenshotCaptureMode::from_setting("clicked_window"),
+            ScreenshotCaptureMode::ClickedWindow
+        );
+        assert_eq!(
+            ScreenshotCaptureMode::from_setting("unexpected"),
+            ScreenshotCaptureMode::ClickedMonitor
+        );
+        assert_eq!(
+            ScreenshotCaptureMode::from_setting(""),
+            ScreenshotCaptureMode::ClickedMonitor
+        );
+    }
 
     #[test]
     fn screenshot_path_uses_safe_session_folder_and_step_filename() {

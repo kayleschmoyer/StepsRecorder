@@ -117,7 +117,7 @@ Stores local user settings.
 
 | Key | Default | Notes |
 |---|---|---|
-| screenshot_mode | `clicked_monitor` | MVP default |
+| screenshot_mode | `clicked_monitor` | `clicked_monitor` captures the full clicked monitor; `clicked_window` captures the Windows top-level window under the click when possible and falls back to `clicked_monitor`. |
 | click_debounce_ms | `500` | Prevents accidental rapid duplicates |
 | include_timestamps_in_export | `true` | Default export option |
 | include_click_markers | `true` | Default screenshot marker option |
