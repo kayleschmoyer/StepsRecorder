@@ -151,8 +151,10 @@ export interface RecordingSession {
   includeClickMarkersDefault: boolean;
 }
 
+export type ScreenshotMode = 'clicked_monitor' | 'clicked_window';
+
 export interface AppSettings {
-  screenshotMode: 'clicked_monitor';
+  screenshotMode: ScreenshotMode;
   clickDebounceMs: number;
   includeTimestampsInExport: boolean;
   includeClickMarkers: boolean;
@@ -161,6 +163,7 @@ export interface AppSettings {
 }
 
 export interface UpdateSettingsInput {
+  screenshotMode?: ScreenshotMode;
   clickDebounceMs?: number;
   includeTimestampsInExport?: boolean;
   includeClickMarkers?: boolean;

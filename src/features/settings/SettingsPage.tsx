@@ -1,10 +1,11 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { Button } from '../../components/button/Button';
 import { Card } from '../../components/card/Card';
-import { tauriClient, type AppSettings } from '../../lib/tauriClient';
+import { tauriClient, type AppSettings, type ScreenshotMode } from '../../lib/tauriClient';
 import styles from './SettingsPage.module.css';
 
 type SettingsFormState = {
+  screenshotMode: ScreenshotMode;
   clickDebounceMs: string;
   includeTimestampsInExport: boolean;
   includeClickMarkers: boolean;
@@ -13,6 +14,7 @@ type SettingsFormState = {
 };
 
 const emptyFormState: SettingsFormState = {
+  screenshotMode: 'clicked_monitor',
   clickDebounceMs: '500',
   includeTimestampsInExport: true,
   includeClickMarkers: true,
@@ -101,6 +103,7 @@ export function SettingsPage() {
 
     try {
       const updatedSettings = await tauriClient.updateSettings({
+        screenshotMode: formState.screenshotMode,
         clickDebounceMs,
         includeTimestampsInExport: formState.includeTimestampsInExport,
         includeClickMarkers: formState.includeClickMarkers,
@@ -125,7 +128,7 @@ export function SettingsPage() {
         <h1 className={styles.title}>Tune safe capture defaults before native recording is enabled.</h1>
         <p className={styles.description}>
           These settings are loaded through the typed Tauri command layer and persisted to the existing SQLite
-          app_settings table. Screenshot mode remains read-only for this step.
+          app_settings table. Choose whether clicks capture the full clicked monitor or only the visible bounds of the clicked window.
         </p>
       </section>
 
@@ -141,8 +144,19 @@ export function SettingsPage() {
         <form className={styles.form} onSubmit={handleSubmit}>
           <label className={styles.field}>
             <span>Screenshot mode</span>
-            <input value={settings?.screenshotMode ?? 'clicked_monitor'} readOnly />
-            <small>Native screenshot capture is not implemented in Step 4.</small>
+            <select
+              value={formState.screenshotMode}
+              onChange={(event) =>
+                setFormState((current) => ({ ...current, screenshotMode: event.target.value as ScreenshotMode }))
+              }
+            >
+              <option value="clicked_monitor">Clicked monitor (fallback)</option>
+              <option value="clicked_window">Clicked window (Windows only)</option>
+            </select>
+            <small>
+              Clicked window captures the visible screen rectangle for the top-level window under the click, including
+              its title bar and borders. If that fails, capture falls back to clicked monitor.
+            </small>
           </label>
 
           <label className={styles.field}>
@@ -234,6 +248,7 @@ export function SettingsPage() {
 
 function settingsToFormState(settings: AppSettings): SettingsFormState {
   return {
+    screenshotMode: settings.screenshotMode === 'clicked_window' ? 'clicked_window' : 'clicked_monitor',
     clickDebounceMs: String(settings.clickDebounceMs),
     includeTimestampsInExport: settings.includeTimestampsInExport,
     includeClickMarkers: settings.includeClickMarkers,

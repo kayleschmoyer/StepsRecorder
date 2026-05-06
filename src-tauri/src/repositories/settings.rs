@@ -29,6 +29,10 @@ pub fn get_settings(connection: &Connection) -> Result<AppSettings, AppErrorResp
     }
 
     for key in SETTING_KEYS {
+        if key == "screenshot_mode" {
+            continue;
+        }
+
         if !values.contains_key(key) {
             return Err(AppErrorResponse::new(
                 "settings_missing_key",
@@ -38,7 +42,10 @@ pub fn get_settings(connection: &Connection) -> Result<AppSettings, AppErrorResp
     }
 
     Ok(AppSettings {
-        screenshot_mode: required_string(&values, "screenshot_mode")?,
+        screenshot_mode: values
+            .get("screenshot_mode")
+            .map(|value| normalize_screenshot_mode(value))
+            .unwrap_or("clicked_monitor"),
         click_debounce_ms: required_string(&values, "click_debounce_ms")?
             .parse::<i64>()
             .map_err(|_| {
@@ -58,6 +65,14 @@ pub fn update_settings(
     connection: &Connection,
     input: UpdateSettingsInput,
 ) -> Result<AppSettings, AppErrorResponse> {
+    if let Some(screenshot_mode) = input.screenshot_mode {
+        upsert_setting(
+            connection,
+            "screenshot_mode",
+            normalize_screenshot_mode(&screenshot_mode),
+        )?;
+    }
+
     if let Some(click_debounce_ms) = input.click_debounce_ms {
         if click_debounce_ms < 0 {
             return Err(AppErrorResponse::new(
@@ -133,6 +148,14 @@ fn parse_bool(values: &HashMap<String, String>, key: &str) -> Result<bool, AppEr
             "settings_invalid_value",
             format!("The setting '{key}' must be true or false."),
         )),
+    }
+}
+
+fn normalize_screenshot_mode(value: &str) -> &'static str {
+    match value {
+        "clicked_window" => "clicked_window",
+        "clicked_monitor" => "clicked_monitor",
+        _ => "clicked_monitor",
     }
 }
 
