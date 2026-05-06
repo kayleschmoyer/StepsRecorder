@@ -100,6 +100,18 @@ pub struct ExportHistoryRecord {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ListScreenshotEditsInput {
+    pub step_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListExportHistoryInput {
+    pub session_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListSessionsInput {
     pub limit: Option<i64>,
     pub include_archived: Option<bool>,

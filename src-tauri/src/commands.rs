@@ -3,10 +3,11 @@ use tauri::State;
 use crate::{
     db::AppDatabase,
     models::{
-        AppErrorResponse, AppSettings, GetSessionInput, ListSessionsInput, RecordingSession,
-        SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput,
+        AppErrorResponse, AppSettings, ExportHistoryRecord, GetSessionInput,
+        ListExportHistoryInput, ListScreenshotEditsInput, ListSessionsInput, RecordingSession,
+        ScreenshotEdit, SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput,
     },
-    repositories::{sessions, settings},
+    repositories::{export_history, screenshot_edits, sessions, settings},
 };
 
 #[tauri::command]
@@ -97,4 +98,36 @@ pub fn update_session(
     })?;
 
     sessions::update_session(&connection, input)
+}
+
+#[tauri::command]
+pub fn list_screenshot_edits(
+    input: ListScreenshotEditsInput,
+    database: State<'_, AppDatabase>,
+) -> Result<Vec<ScreenshotEdit>, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    screenshot_edits::list_screenshot_edits_for_step(&connection, &input.step_id)
+}
+
+#[tauri::command]
+pub fn list_export_history(
+    input: ListExportHistoryInput,
+    database: State<'_, AppDatabase>,
+) -> Result<Vec<ExportHistoryRecord>, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    export_history::list_export_history_for_session(&connection, &input.session_id)
 }
