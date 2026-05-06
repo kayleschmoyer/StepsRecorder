@@ -1,3 +1,4 @@
+mod capture;
 mod commands;
 mod db;
 mod models;
@@ -20,6 +21,7 @@ pub fn run() {
             database.path.display()
         );
         app.manage(database);
+        app.manage(capture::CaptureService::new());
         Ok(())
     });
 

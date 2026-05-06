@@ -1,6 +1,7 @@
 use tauri::State;
 
 use crate::{
+    capture::CaptureService,
     db::AppDatabase,
     models::{
         AppErrorResponse, AppSettings, ClearSeededDataResult, DeleteStepInput, DeleteStepResult,
@@ -51,6 +52,7 @@ pub fn update_settings(
 pub fn start_recording_session(
     input: StartRecordingSessionInput,
     database: State<'_, AppDatabase>,
+    capture_service: State<'_, CaptureService>,
 ) -> Result<RecordingSession, AppErrorResponse> {
     let connection = database.connection.lock().map_err(|error| {
         AppErrorResponse::with_details(
@@ -60,13 +62,20 @@ pub fn start_recording_session(
         )
     })?;
 
-    sessions::start_recording_session(&connection, input)
+    let app_settings = settings::get_settings(&connection)?;
+    let session = sessions::start_recording_session(&connection, input)?;
+    drop(connection);
+
+    capture_service.start(session.id.clone(), app_settings.click_debounce_ms)?;
+
+    Ok(session)
 }
 
 #[tauri::command]
 pub fn stop_recording_session(
     input: StopRecordingSessionInput,
     database: State<'_, AppDatabase>,
+    capture_service: State<'_, CaptureService>,
 ) -> Result<RecordingSession, AppErrorResponse> {
     let connection = database.connection.lock().map_err(|error| {
         AppErrorResponse::with_details(
@@ -76,7 +85,12 @@ pub fn stop_recording_session(
         )
     })?;
 
-    sessions::stop_recording_session(&connection, input)
+    let session = sessions::stop_recording_session(&connection, input)?;
+    drop(connection);
+
+    capture_service.stop(&session.id)?;
+
+    Ok(session)
 }
 
 #[tauri::command]
