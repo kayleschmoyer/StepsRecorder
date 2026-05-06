@@ -32,6 +32,9 @@ pub fn run() {
             commands::list_sessions,
             commands::get_session,
             commands::update_session,
+            commands::update_step,
+            commands::delete_step,
+            commands::reorder_steps,
             commands::list_screenshot_edits,
             commands::list_export_history
         ])
