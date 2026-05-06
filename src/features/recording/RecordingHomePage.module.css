@@ -1,14 +1,19 @@
 .page {
   display: grid;
-  gap: var(--spacing-105);
+  gap: var(--spacing-40);
 }
 
 .hero {
   display: grid;
-  justify-items: center;
-  gap: var(--spacing-20);
-  padding: var(--spacing-105) var(--spacing-24) var(--spacing-40);
-  text-align: center;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: var(--spacing-32);
+  align-items: center;
+  padding: var(--spacing-40) var(--spacing-24) 0;
+}
+
+.heroCopy {
+  display: grid;
+  gap: var(--spacing-16);
 }
 
 .eyebrow,
@@ -23,18 +28,18 @@
 }
 
 .title {
-  max-width: 880px;
+  max-width: 760px;
   margin: 0;
   color: var(--color-pure-white);
   font-family: var(--font-ivy-presto);
-  font-size: clamp(var(--text-heading-lg), 8vw, var(--text-display));
+  font-size: clamp(var(--text-heading-lg), 5.4vw, 64px);
   font-weight: var(--font-weight-medium);
-  line-height: var(--leading-display);
+  line-height: var(--leading-heading-lg);
   letter-spacing: var(--tracking-display);
 }
 
 .description {
-  max-width: 720px;
+  max-width: 680px;
   margin: 0;
   color: var(--color-porcelain-text);
   font-size: var(--text-body);
@@ -42,11 +47,29 @@
   letter-spacing: var(--tracking-body);
 }
 
-.heroActions {
+.readyPanel {
   display: grid;
-  justify-items: center;
-  gap: var(--spacing-16);
-  margin-top: var(--spacing-12);
+  gap: var(--spacing-20);
+  align-content: start;
+  padding: var(--card-padding);
+  border: 1px solid var(--color-ash-text);
+  background:
+    var(--gradient-golden-hover),
+    var(--color-charcoal-canvas);
+}
+
+.readyHeader {
+  display: grid;
+  gap: var(--element-gap);
+}
+
+.privacyNote {
+  max-width: 520px;
+  margin: 0;
+  color: var(--color-silver-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
 }
 
 .cardGrid {
@@ -65,7 +88,7 @@
 
 .workflowCard {
   align-content: start;
-  background: var(--color-slate-gray);
+  background: var(--color-pewter-accent);
 }
 
 .cardAccent {
@@ -73,6 +96,7 @@
   height: var(--spacing-6);
   border-radius: var(--radius-pill);
   background: var(--gradient-golden-gradient);
+  opacity: 0.72;
 }
 
 .cardTitle,
@@ -91,6 +115,13 @@
   font-size: var(--text-body);
   line-height: var(--leading-body);
   letter-spacing: var(--tracking-body);
+}
+
+.workflowCard .cardDescription {
+  color: var(--color-silver-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
 }
 
 .dashboardGrid {
@@ -178,6 +209,7 @@
 }
 
 @media (max-width: 960px) {
+  .hero,
   .cardGrid,
   .dashboardGrid {
     grid-template-columns: 1fr 1fr;
@@ -190,7 +222,8 @@
   }
 
   .hero {
-    padding: var(--spacing-40) 0;
+    grid-template-columns: 1fr;
+    padding: var(--spacing-24) 0 0;
   }
 
   .cardGrid,

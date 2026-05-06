@@ -38,22 +38,32 @@ export function RecordingHomePage() {
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
-        <p className={styles.eyebrow}>Windows documentation workflow</p>
-        <h1 className={styles.title}>Capture polished process steps without breaking flow.</h1>
-        <p className={styles.description}>
-          Steps Recorder will turn Windows clicks and screenshots into editable sessions. This foundation keeps
-          native capture behind a typed Tauri boundary until the safe Rust implementation is added.
-        </p>
-        <div className={styles.heroActions}>
-          <RecordingControlBar />
-          <RecordingStatusPanel />
+        <div className={styles.heroCopy}>
+          <p className={styles.eyebrow}>Windows documentation workflow</p>
+          <h1 className={styles.title}>Capture polished process steps without breaking flow.</h1>
+          <p className={styles.description}>
+            Steps Recorder will turn Windows clicks and screenshots into editable sessions. This shell keeps native
+            capture behind a typed Tauri boundary until the safe Rust implementation is added.
+          </p>
         </div>
+
+        <Card className={styles.readyPanel} aria-labelledby="ready-to-record-title">
+          <div className={styles.readyHeader}>
+            <p className={styles.panelEyebrow}>Recorder workspace</p>
+            <h2 id="ready-to-record-title" className={styles.panelTitle}>Ready to Record</h2>
+          </div>
+          <RecordingStatusPanel />
+          <RecordingControlBar />
+          <p className={styles.privacyNote}>
+            Privacy reminder: close passwords, customer data, and personal documents before starting a session.
+          </p>
+        </Card>
       </section>
 
       <PageSection
         eyebrow="Step 1 foundation"
-        title="Home screen placeholders"
-        description="The app shell is ready for recording, session review, privacy, and settings flows without enabling native capture yet."
+        title="Secondary placeholders"
+        description="These cards reserve space for future recording, session review, privacy, and settings flows without enabling native capture yet."
       >
         <div className={styles.cardGrid}>
           {workflowCards.map((card) => (
