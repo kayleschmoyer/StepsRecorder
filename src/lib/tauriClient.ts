@@ -24,6 +24,13 @@ export interface GetSessionInput {
   sessionId: string;
 }
 
+
+export interface ClearSeededDataResult {
+  sessionId: string;
+  deletedSessions: number;
+  deletedSteps: number;
+}
+
 export interface ListScreenshotEditsInput {
   stepId: string;
 }
@@ -199,6 +206,14 @@ type StepsRecorderCommands = {
     request: { input: ListExportHistoryInput };
     response: ExportHistoryRecord[];
   };
+  dev_seed_sample_data: {
+    request: undefined;
+    response: SessionDetail;
+  };
+  dev_clear_seeded_data: {
+    request: undefined;
+    response: ClearSeededDataResult;
+  };
 };
 
 type CommandMap = Record<string, TauriCommandDefinition>;
@@ -226,4 +241,6 @@ export const tauriClient = {
   reorderSteps: (input: ReorderStepsInput) => invokeTauriCommand('reorder_steps', { input }),
   listScreenshotEdits: (input: ListScreenshotEditsInput) => invokeTauriCommand('list_screenshot_edits', { input }),
   listExportHistory: (input: ListExportHistoryInput) => invokeTauriCommand('list_export_history', { input }),
+  devSeedSampleData: () => invokeTauriCommand('dev_seed_sample_data', undefined),
+  devClearSeededData: () => invokeTauriCommand('dev_clear_seeded_data', undefined),
 };

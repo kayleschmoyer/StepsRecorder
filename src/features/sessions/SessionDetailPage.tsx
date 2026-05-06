@@ -203,7 +203,7 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
             <h3>No steps captured yet</h3>
             <p>
               This session exists, but it has no active steps. Native mouse capture and screenshot capture remain out of
-              scope for Step 3.
+              scope for Step 4.
             </p>
           </Card>
         )}
@@ -235,8 +235,8 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
                 </div>
 
                 <div className={styles.screenshotPlaceholder}>
-                  <span>No screenshot preview in Step 3</span>
-                  <small>Original path: {step.originalScreenshotPath}</small>
+                  <span>No screenshot preview in Step 4</span>
+                  <small>Placeholder original path only: {step.originalScreenshotPath}</small>
                   {step.editedScreenshotPath ? <small>Edited path: {step.editedScreenshotPath}</small> : null}
                 </div>
 

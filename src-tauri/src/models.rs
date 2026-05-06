@@ -98,6 +98,14 @@ pub struct ExportHistoryRecord {
     pub error_message: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearSeededDataResult {
+    pub session_id: String,
+    pub deleted_sessions: usize,
+    pub deleted_steps: usize,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListScreenshotEditsInput {

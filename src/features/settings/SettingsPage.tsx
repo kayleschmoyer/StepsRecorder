@@ -25,6 +25,8 @@ export function SettingsPage() {
   const [formState, setFormState] = useState<SettingsFormState>(emptyFormState);
   const [status, setStatus] = useState<'loading' | 'ready' | 'saving' | 'saved' | 'error'>('loading');
   const [message, setMessage] = useState('Loading settings from SQLite…');
+  const [devFixtureStatus, setDevFixtureStatus] = useState<'idle' | 'saving' | 'error'>('idle');
+  const [devFixtureMessage, setDevFixtureMessage] = useState('Developer-only fixture actions are available in local dev builds.');
 
   useEffect(() => {
     let isMounted = true;
@@ -54,6 +56,35 @@ export function SettingsPage() {
       isMounted = false;
     };
   }, []);
+
+
+  async function handleSeedSampleData() {
+    setDevFixtureStatus('saving');
+    setDevFixtureMessage('Seeding development sample data…');
+
+    try {
+      const seededSession = await tauriClient.devSeedSampleData();
+      setDevFixtureStatus('idle');
+      setDevFixtureMessage(`Seeded ${seededSession.steps.length} placeholder steps. Open it from Recent Sessions or jump directly to Session Review.`);
+    } catch {
+      setDevFixtureStatus('error');
+      setDevFixtureMessage('Dev seed command is only available in the Tauri debug app.');
+    }
+  }
+
+  async function handleClearSeededData() {
+    setDevFixtureStatus('saving');
+    setDevFixtureMessage('Clearing development sample data…');
+
+    try {
+      const result = await tauriClient.devClearSeededData();
+      setDevFixtureStatus('idle');
+      setDevFixtureMessage(`Cleared ${result.deletedSessions} seeded session and ${result.deletedSteps} seeded steps.`);
+    } catch {
+      setDevFixtureStatus('error');
+      setDevFixtureMessage('Dev clear command is only available in the Tauri debug app.');
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,7 +142,7 @@ export function SettingsPage() {
           <label className={styles.field}>
             <span>Screenshot mode</span>
             <input value={settings?.screenshotMode ?? 'clicked_monitor'} readOnly />
-            <small>Native screenshot capture is not implemented in Step 3.</small>
+            <small>Native screenshot capture is not implemented in Step 4.</small>
           </label>
 
           <label className={styles.field}>
@@ -172,6 +203,31 @@ export function SettingsPage() {
           </div>
         </form>
       </Card>
+
+      {import.meta.env.DEV && (
+        <Card className={styles.devPanel} aria-labelledby="dev-fixtures-title">
+          <div className={styles.panelHeader}>
+            <div>
+              <p className={styles.eyebrow}>Development only</p>
+              <h2 id="dev-fixtures-title" className={styles.panelTitle}>Test fixtures</h2>
+            </div>
+            <p className={devFixtureStatus === 'error' ? styles.errorText : styles.statusText}>{devFixtureMessage}</p>
+          </div>
+          <p className={styles.devWarning}>
+            Local debug tooling only: creates one deterministic sample session with three editable steps and placeholder
+            screenshot path strings. It does not create image files or enable native capture.
+          </p>
+          <div className={styles.actions}>
+            <Button disabled={devFixtureStatus === 'saving'} onClick={handleSeedSampleData}>
+              Seed dev sample data
+            </Button>
+            <Button disabled={devFixtureStatus === 'saving'} variant="ghost" onClick={handleClearSeededData}>
+              Clear dev sample data
+            </Button>
+            <a className={styles.backLink} href="#/sessions/dev-seed-session-settings-review">Open seeded Session Review</a>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
