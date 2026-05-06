@@ -1,6 +1,12 @@
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub mod service;
+
+#[cfg(windows)]
+pub mod windows;
+
+#[cfg(not(windows))]
+pub mod noop;
 
 pub use service::{CaptureService, CapturedClickEvent};
 
@@ -21,3 +27,15 @@ pub(crate) struct ActiveCaptureSession {
     pub last_accepted_click_timestamp_ms: Option<u128>,
     pub accepted_clicks: Vec<CapturedClickEvent>,
 }
+
+#[cfg(windows)]
+pub(crate) fn default_capture_adapter() -> Box<dyn service::CaptureAdapter> {
+    Box::new(windows::WindowsClickCaptureAdapter::new())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn default_capture_adapter() -> Box<dyn service::CaptureAdapter> {
+    Box::new(noop::NoopCaptureAdapter::new())
+}
+
+pub(crate) type SharedCaptureStateHandle = Arc<SharedCaptureState>;
