@@ -6,6 +6,9 @@ use std::{
 
 use crate::{capture::service::CapturedClickEvent, models::AppErrorResponse};
 
+#[cfg(windows)]
+use windows_sys::Win32::Graphics::Gdi::HDC;
+
 #[derive(Debug, Clone)]
 pub struct ScreenshotStorage {
     root: PathBuf,
@@ -114,8 +117,7 @@ fn capture_visible_monitor(x: i64, y: i64) -> Result<CapturedImage, AppErrorResp
     };
     use windows_sys::Win32::{
         Foundation::{POINT, RECT},
-        Graphics::Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO},
-        UI::WindowsAndMessaging::{GetDC, ReleaseDC},
+        Graphics::Gdi::{GetDC, GetMonitorInfoW, MonitorFromPoint, ReleaseDC, MONITORINFO},
     };
 
     const MONITOR_DEFAULTTONEAREST: u32 = 0x00000002;
@@ -191,7 +193,7 @@ unsafe fn capture_dc_region(
     use windows_sys::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits,
         SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS, HBITMAP,
-        HDC, HGDIOBJ, SRCCOPY,
+        HGDIOBJ, SRCCOPY,
     };
 
     let memory_dc = CreateCompatibleDC(screen_dc);
