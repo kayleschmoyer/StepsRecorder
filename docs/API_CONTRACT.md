@@ -265,25 +265,28 @@ export interface ReorderStepsResult {
 
 ## Screenshot Commands
 
-## get_screenshot_file_url
+## get_step_screenshot_preview
 
-Returns a safe local file URL for display in the frontend.
+Returns a base64 PNG preview for Session Review. The command prefers an existing marked/edited screenshot and falls back to the immutable original screenshot.
 
 ### Input
 
 ```typescript
-export interface GetScreenshotFileUrlInput {
+export interface GetStepScreenshotPreviewInput {
   stepId: string;
-  version: "original" | "edited";
 }
 ```
 
 ### Output
 
 ```typescript
-export interface ScreenshotFileUrlResult {
-  stepId: string;
-  url: string;
+export interface StepScreenshotPreview {
+  exists: boolean;
+  originalScreenshotPath: string;
+  editedScreenshotPath?: string;
+  displayedScreenshotPath?: string;
+  previewKind: "missing" | "original" | "click_marker";
+  dataUrl?: string;
 }
 ```
 

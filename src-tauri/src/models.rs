@@ -147,6 +147,9 @@ pub struct GetStepScreenshotPreviewInput {
 pub struct StepScreenshotPreview {
     pub exists: bool,
     pub original_screenshot_path: String,
+    pub edited_screenshot_path: Option<String>,
+    pub displayed_screenshot_path: Option<String>,
+    pub preview_kind: String,
     pub data_url: Option<String>,
 }
 

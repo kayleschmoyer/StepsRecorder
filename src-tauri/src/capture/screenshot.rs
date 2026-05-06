@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::BufWriter,
+    io::{BufReader, BufWriter},
     path::{Path, PathBuf},
 };
 
@@ -24,9 +24,17 @@ impl ScreenshotStorage {
     }
 
     pub fn original_path_for_step(&self, session_id: &str, step_number: i64) -> PathBuf {
+        self.step_path_for_variant(session_id, step_number, "original")
+    }
+
+    pub fn marked_path_for_step(&self, session_id: &str, step_number: i64) -> PathBuf {
+        self.step_path_for_variant(session_id, step_number, "marked")
+    }
+
+    fn step_path_for_variant(&self, session_id: &str, step_number: i64, variant: &str) -> PathBuf {
         self.root
             .join(format!("session-{}", safe_path_segment(session_id)))
-            .join(format!("step-{step_number:04}-original.png"))
+            .join(format!("step-{step_number:04}-{variant}.png"))
     }
 }
 
@@ -35,6 +43,8 @@ pub struct ScreenshotCaptureResult {
     pub path: PathBuf,
     pub width: u32,
     pub height: u32,
+    pub marker_x: u32,
+    pub marker_y: u32,
 }
 
 pub fn capture_original_screenshot_for_step(
@@ -60,6 +70,40 @@ pub fn capture_original_screenshot_for_step(
         path: output_path,
         width: image.width,
         height: image.height,
+        marker_x: image.marker_x,
+        marker_y: image.marker_y,
+    })
+}
+
+pub fn generate_marked_screenshot_for_step(
+    storage: &ScreenshotStorage,
+    event: &CapturedClickEvent,
+    step_number: i64,
+    original_capture: &ScreenshotCaptureResult,
+) -> Result<ScreenshotCaptureResult, AppErrorResponse> {
+    let marked_path = storage.marked_path_for_step(&event.session_id, step_number);
+    if let Some(parent) = marked_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            AppErrorResponse::with_details(
+                "screenshot_directory_error",
+                "The marked screenshot directory could not be created.",
+                error.to_string(),
+            )
+        })?;
+    }
+
+    let (width, height, mut rgba) = read_png_rgba(&original_capture.path)?;
+    let marker_x = original_capture.marker_x.min(width.saturating_sub(1));
+    let marker_y = original_capture.marker_y.min(height.saturating_sub(1));
+    draw_click_marker(&mut rgba, width, height, marker_x, marker_y);
+    write_png(&marked_path, width, height, &rgba)?;
+
+    Ok(ScreenshotCaptureResult {
+        path: marked_path,
+        width,
+        height,
+        marker_x,
+        marker_y,
     })
 }
 
@@ -67,6 +111,8 @@ struct CapturedImage {
     width: u32,
     height: u32,
     rgba: Vec<u8>,
+    marker_x: u32,
+    marker_y: u32,
 }
 
 fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<(), AppErrorResponse> {
@@ -83,6 +129,177 @@ fn write_png(path: &Path, width: u32, height: u32, rgba: &[u8]) -> Result<(), Ap
     encoder.set_depth(png::BitDepth::Eight);
     let mut png_writer = encoder.write_header().map_err(to_png_error)?;
     png_writer.write_image_data(rgba).map_err(to_png_error)
+}
+
+fn read_png_rgba(path: &Path) -> Result<(u32, u32, Vec<u8>), AppErrorResponse> {
+    let file = File::open(path).map_err(|error| {
+        AppErrorResponse::with_details(
+            "screenshot_preview_read_error",
+            "The original screenshot file could not be read for marker generation.",
+            error.to_string(),
+        )
+    })?;
+    let decoder = png::Decoder::new(BufReader::new(file));
+    let mut reader = decoder.read_info().map_err(to_png_decode_error)?;
+    let mut buffer = vec![0; reader.output_buffer_size()];
+    let info = reader
+        .next_frame(&mut buffer)
+        .map_err(to_png_decode_error)?;
+    let bytes = &buffer[..info.buffer_size()];
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => bytes.to_vec(),
+        png::ColorType::Rgb => bytes
+            .chunks_exact(3)
+            .flat_map(|pixel| [pixel[0], pixel[1], pixel[2], 255])
+            .collect(),
+        png::ColorType::Grayscale => bytes
+            .iter()
+            .flat_map(|value| [*value, *value, *value, 255])
+            .collect(),
+        png::ColorType::GrayscaleAlpha => bytes
+            .chunks_exact(2)
+            .flat_map(|pixel| [pixel[0], pixel[0], pixel[0], pixel[1]])
+            .collect(),
+        png::ColorType::Indexed => {
+            return Err(AppErrorResponse::new(
+                "screenshot_marker_png_error",
+                "Indexed-color screenshots are not supported for click marker generation.",
+            ));
+        }
+    };
+
+    Ok((info.width, info.height, rgba))
+}
+
+fn draw_click_marker(rgba: &mut [u8], width: u32, height: u32, marker_x: u32, marker_y: u32) {
+    draw_ring(
+        rgba,
+        width,
+        height,
+        marker_x,
+        marker_y,
+        30.0,
+        2.0,
+        [255, 240, 204, 150],
+    );
+    draw_ring(
+        rgba,
+        width,
+        height,
+        marker_x,
+        marker_y,
+        22.0,
+        4.0,
+        [255, 255, 255, 230],
+    );
+    draw_filled_circle(
+        rgba,
+        width,
+        height,
+        marker_x,
+        marker_y,
+        5.0,
+        [204, 145, 102, 245],
+    );
+    draw_filled_circle(
+        rgba,
+        width,
+        height,
+        marker_x,
+        marker_y,
+        2.0,
+        [255, 255, 255, 245],
+    );
+}
+
+fn draw_ring(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    center_x: u32,
+    center_y: u32,
+    radius: f32,
+    stroke_width: f32,
+    color: [u8; 4],
+) {
+    let outer = radius + (stroke_width / 2.0);
+    let inner = (radius - (stroke_width / 2.0)).max(0.0);
+    let min_x = (center_x as f32 - outer).floor().max(0.0) as u32;
+    let min_y = (center_y as f32 - outer).floor().max(0.0) as u32;
+    let max_x = (center_x as f32 + outer)
+        .ceil()
+        .min(width.saturating_sub(1) as f32) as u32;
+    let max_y = (center_y as f32 + outer)
+        .ceil()
+        .min(height.saturating_sub(1) as f32) as u32;
+    let inner_squared = inner * inner;
+    let outer_squared = outer * outer;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 - center_x as f32;
+            let dy = y as f32 - center_y as f32;
+            let distance_squared = (dx * dx) + (dy * dy);
+            if distance_squared >= inner_squared && distance_squared <= outer_squared {
+                blend_pixel(rgba, width, x, y, color);
+            }
+        }
+    }
+}
+
+fn draw_filled_circle(
+    rgba: &mut [u8],
+    width: u32,
+    height: u32,
+    center_x: u32,
+    center_y: u32,
+    radius: f32,
+    color: [u8; 4],
+) {
+    let min_x = (center_x as f32 - radius).floor().max(0.0) as u32;
+    let min_y = (center_y as f32 - radius).floor().max(0.0) as u32;
+    let max_x = (center_x as f32 + radius)
+        .ceil()
+        .min(width.saturating_sub(1) as f32) as u32;
+    let max_y = (center_y as f32 + radius)
+        .ceil()
+        .min(height.saturating_sub(1) as f32) as u32;
+    let radius_squared = radius * radius;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let dx = x as f32 - center_x as f32;
+            let dy = y as f32 - center_y as f32;
+            if (dx * dx) + (dy * dy) <= radius_squared {
+                blend_pixel(rgba, width, x, y, color);
+            }
+        }
+    }
+}
+
+fn blend_pixel(rgba: &mut [u8], width: u32, x: u32, y: u32, color: [u8; 4]) {
+    let index = ((y * width + x) * 4) as usize;
+    if index + 3 >= rgba.len() {
+        return;
+    }
+
+    let alpha = f32::from(color[3]) / 255.0;
+    let inverse_alpha = 1.0 - alpha;
+    rgba[index] =
+        ((f32::from(color[0]) * alpha) + (f32::from(rgba[index]) * inverse_alpha)).round() as u8;
+    rgba[index + 1] = ((f32::from(color[1]) * alpha) + (f32::from(rgba[index + 1]) * inverse_alpha))
+        .round() as u8;
+    rgba[index + 2] = ((f32::from(color[2]) * alpha) + (f32::from(rgba[index + 2]) * inverse_alpha))
+        .round() as u8;
+    rgba[index + 3] = 255;
+}
+
+fn to_png_decode_error(error: png::DecodingError) -> AppErrorResponse {
+    AppErrorResponse::with_details(
+        "screenshot_marker_png_error",
+        "The screenshot PNG could not be decoded for marker generation.",
+        error.to_string(),
+    )
 }
 
 fn to_png_error(error: png::EncodingError) -> AppErrorResponse {
@@ -170,7 +387,17 @@ fn capture_visible_monitor(x: i64, y: i64) -> Result<CapturedImage, AppErrorResp
 
     let result = unsafe {
         capture_dc_region(
-            screen_dc, rect.left, rect.top, width_i32, height_i32, width, height,
+            screen_dc,
+            rect.left,
+            rect.top,
+            width_i32,
+            height_i32,
+            width,
+            height,
+            x.saturating_sub(i64::from(rect.left))
+                .clamp(0, i64::from(width.saturating_sub(1))) as u32,
+            y.saturating_sub(i64::from(rect.top))
+                .clamp(0, i64::from(height.saturating_sub(1))) as u32,
         )
     };
     unsafe {
@@ -188,6 +415,8 @@ unsafe fn capture_dc_region(
     height_i32: i32,
     width: u32,
     height: u32,
+    marker_x: u32,
+    marker_y: u32,
 ) -> Result<CapturedImage, AppErrorResponse> {
     use std::mem::{size_of, zeroed};
     use windows_sys::Win32::Graphics::Gdi::{
@@ -272,6 +501,8 @@ unsafe fn capture_dc_region(
                 width,
                 height,
                 rgba: pixels,
+                marker_x,
+                marker_y,
             })
         }
     };
@@ -304,12 +535,69 @@ mod tests {
     #[test]
     fn screenshot_path_uses_safe_session_folder_and_step_filename() {
         let storage = ScreenshotStorage::new(PathBuf::from("screenshots"));
-        let path = storage.original_path_for_step("session:one/two", 7);
+        let original_path = storage.original_path_for_step("session:one/two", 7);
+        let marked_path = storage.marked_path_for_step("session:one/two", 7);
+
         assert_eq!(
-            path,
+            original_path,
             PathBuf::from("screenshots")
                 .join("session-session-one-two")
                 .join("step-0007-original.png")
         );
+        assert_eq!(
+            marked_path,
+            PathBuf::from("screenshots")
+                .join("session-session-one-two")
+                .join("step-0007-marked.png")
+        );
+    }
+
+    #[test]
+    fn marked_screenshot_is_derived_without_overwriting_original() {
+        let root =
+            std::env::temp_dir().join(format!("steps-recorder-marker-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let storage = ScreenshotStorage::new(root.clone());
+        let event = CapturedClickEvent {
+            session_id: "session-marker".to_string(),
+            x: 10,
+            y: 10,
+            timestamp_ms: 0,
+            monitor_id: None,
+            active_window_title: None,
+            process_name: None,
+        };
+        let original_path = storage.original_path_for_step(&event.session_id, 1);
+        std::fs::create_dir_all(original_path.parent().expect("original parent"))
+            .expect("create screenshot test directory");
+        let pixels = vec![18u8; 80 * 80 * 4];
+        write_png(&original_path, 80, 80, &pixels).expect("write original png");
+        let original_bytes = std::fs::read(&original_path).expect("read original before marker");
+        let original_capture = ScreenshotCaptureResult {
+            path: original_path.clone(),
+            width: 80,
+            height: 80,
+            marker_x: 40,
+            marker_y: 40,
+        };
+
+        let marked_capture =
+            generate_marked_screenshot_for_step(&storage, &event, 1, &original_capture)
+                .expect("generate marked screenshot");
+
+        assert_eq!(
+            marked_capture.path,
+            storage.marked_path_for_step(&event.session_id, 1)
+        );
+        assert!(marked_capture.path.exists());
+        assert_eq!(
+            std::fs::read(&original_path).expect("read original after marker"),
+            original_bytes
+        );
+        assert_ne!(
+            std::fs::read(&marked_capture.path).expect("read marked screenshot"),
+            original_bytes
+        );
+        let _ = std::fs::remove_dir_all(root);
     }
 }
