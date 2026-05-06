@@ -20,8 +20,9 @@ pub fn run() {
             "Steps Recorder SQLite database: {}",
             database.path.display()
         );
+        let capture_service = capture::CaptureService::new(database.connection.clone());
         app.manage(database);
-        app.manage(capture::CaptureService::new());
+        app.manage(capture_service);
         Ok(())
     });
 

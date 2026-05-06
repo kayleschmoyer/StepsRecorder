@@ -1,10 +1,92 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use std::collections::HashSet;
-
-use crate::models::{
-    AppErrorResponse, DeleteStepInput, DeleteStepResult, RecordingStep, ReorderStepsInput,
-    ReorderStepsResult, UpdateStepInput,
+use std::{
+    collections::HashSet,
+    time::{SystemTime, UNIX_EPOCH},
 };
+
+use crate::{
+    capture::service::CapturedClickEvent,
+    models::{
+        AppErrorResponse, DeleteStepInput, DeleteStepResult, RecordingStep, ReorderStepsInput,
+        ReorderStepsResult, UpdateStepInput,
+    },
+};
+
+pub const STEP_8_SCREENSHOT_PLACEHOLDER_PATH: &str =
+    "SCREENSHOT_CAPTURE_PENDING_STEP_8_METADATA_ONLY";
+const APP_WINDOW_TITLE_MAX_CHARS: usize = 200;
+const PROCESS_NAME_MAX_CHARS: usize = 100;
+
+pub fn create_recorded_click_step(
+    connection: &Connection,
+    event: &CapturedClickEvent,
+) -> Result<RecordingStep, AppErrorResponse> {
+    connection
+        .execute_batch("BEGIN IMMEDIATE")
+        .map_err(to_database_write_error)?;
+
+    let result = (|| {
+        ensure_session_is_recording(connection, &event.session_id)?;
+
+        let step_number = next_step_number(connection, &event.session_id)?;
+        let step_id = generate_step_id();
+        let title = format!("Step {step_number}: Click recorded");
+        let safe_process_name =
+            sanitize_optional_metadata(event.process_name.as_deref(), PROCESS_NAME_MAX_CHARS);
+        let safe_window_title = sanitize_optional_metadata(
+            event.active_window_title.as_deref(),
+            APP_WINDOW_TITLE_MAX_CHARS,
+        );
+        let process_label = safe_process_name
+            .as_deref()
+            .unwrap_or("unknown application");
+        let description = format!(
+            "Click captured at ({}, {}) in {}.",
+            event.x, event.y, process_label
+        );
+        let captured_at_unix_seconds = event
+            .timestamp_ms
+            .saturating_div(1_000)
+            .min(i64::MAX as u128) as i64;
+
+        connection
+            .execute(
+                "INSERT INTO recording_steps (
+                    id, session_id, step_number, title, description, action_type, captured_at,
+                    click_x, click_y, monitor_id, app_window_title, process_name,
+                    original_screenshot_path, edited_screenshot_path, thumbnail_path,
+                    is_deleted, created_at, updated_at
+                )
+                VALUES (
+                    ?1, ?2, ?3, ?4, ?5, 'click',
+                    strftime('%Y-%m-%dT%H:%M:%fZ', ?6, 'unixepoch'),
+                    ?7, ?8, ?9, ?10, ?11, ?12, NULL, NULL, 0,
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now'),
+                    strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                )",
+                params![
+                    step_id,
+                    event.session_id,
+                    step_number,
+                    title,
+                    description,
+                    captured_at_unix_seconds,
+                    event.x,
+                    event.y,
+                    event.monitor_id,
+                    safe_window_title,
+                    safe_process_name,
+                    STEP_8_SCREENSHOT_PLACEHOLDER_PATH
+                ],
+            )
+            .map_err(to_database_write_error)?;
+
+        refresh_session_step_count(connection, &event.session_id)?;
+        get_active_step(connection, &step_id)
+    })();
+
+    finish_transaction(connection, result)
+}
 
 pub fn list_active_steps_for_session(
     connection: &Connection,
@@ -177,6 +259,76 @@ pub fn reorder_steps(
     finish_transaction(connection, result)
 }
 
+fn ensure_session_is_recording(
+    connection: &Connection,
+    session_id: &str,
+) -> Result<(), AppErrorResponse> {
+    let status = connection
+        .query_row(
+            "SELECT status FROM recording_sessions WHERE id = ?1",
+            params![session_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(to_database_error)?
+        .ok_or_else(|| {
+            AppErrorResponse::new(
+                "session_not_found",
+                "The active recording session was not found.",
+            )
+        })?;
+
+    if status != "recording" {
+        return Err(AppErrorResponse::new(
+            "recording_session_not_active",
+            "The click was accepted after the recording session stopped.",
+        ));
+    }
+
+    Ok(())
+}
+
+fn next_step_number(connection: &Connection, session_id: &str) -> Result<i64, AppErrorResponse> {
+    connection
+        .query_row(
+            "SELECT COALESCE(MAX(step_number), 0) + 1
+             FROM recording_steps
+             WHERE session_id = ?1 AND is_deleted = 0",
+            params![session_id],
+            |row| row.get(0),
+        )
+        .map_err(to_database_error)
+}
+
+fn generate_step_id() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("recording-step-{nanos}-{}", std::process::id())
+}
+
+fn sanitize_optional_metadata(value: Option<&str>, max_chars: usize) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| truncate_metadata(value, max_chars))
+}
+
+fn truncate_metadata(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+
+    if chars.next().is_some() && max_chars > 1 {
+        let keep = max_chars.saturating_sub(1);
+        let mut readable: String = truncated.chars().take(keep).collect();
+        readable.push('…');
+        readable
+    } else {
+        truncated
+    }
+}
+
 fn get_active_step(
     connection: &Connection,
     step_id: &str,
@@ -323,4 +475,26 @@ fn to_database_write_error(error: rusqlite::Error) -> AppErrorResponse {
         "The local app database could not be updated.",
         error.to_string(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_truncation_keeps_values_readable() {
+        let long_title = "A".repeat(APP_WINDOW_TITLE_MAX_CHARS + 50);
+        let long_process_name = "process".repeat(30);
+
+        let title = sanitize_optional_metadata(Some(&long_title), APP_WINDOW_TITLE_MAX_CHARS)
+            .expect("truncated title");
+        let process_name =
+            sanitize_optional_metadata(Some(&long_process_name), PROCESS_NAME_MAX_CHARS)
+                .expect("truncated process name");
+
+        assert_eq!(title.chars().count(), APP_WINDOW_TITLE_MAX_CHARS);
+        assert!(title.ends_with('…'));
+        assert_eq!(process_name.chars().count(), PROCESS_NAME_MAX_CHARS);
+        assert!(process_name.ends_with('…'));
+    }
 }

@@ -1,8 +1,12 @@
 use rusqlite::Connection;
-use std::{path::PathBuf, sync::Mutex};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
+#[derive(Clone)]
 pub struct AppDatabase {
-    pub connection: Mutex<Connection>,
+    pub connection: Arc<Mutex<Connection>>,
     pub path: PathBuf,
 }
 
@@ -18,7 +22,7 @@ pub fn initialize_database(data_dir: PathBuf) -> Result<AppDatabase, String> {
         .map_err(|error| format!("Could not migrate SQLite database: {error}"))?;
 
     Ok(AppDatabase {
-        connection: Mutex::new(connection),
+        connection: Arc::new(Mutex::new(connection)),
         path: database_path,
     })
 }
