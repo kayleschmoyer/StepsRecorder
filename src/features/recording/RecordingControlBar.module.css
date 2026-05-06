@@ -4,3 +4,7 @@
   gap: var(--spacing-12);
   align-items: center;
 }
+
+.controlBar > * {
+  flex: 1 1 180px;
+}
