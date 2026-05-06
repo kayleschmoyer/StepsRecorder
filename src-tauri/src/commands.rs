@@ -3,10 +3,11 @@ use tauri::State;
 use crate::{
     db::AppDatabase,
     models::{
-        AppErrorResponse, AppSettings, DeleteStepInput, DeleteStepResult, ExportHistoryRecord,
-        GetSessionInput, ListExportHistoryInput, ListScreenshotEditsInput, ListSessionsInput,
-        RecordingSession, RecordingStep, ReorderStepsInput, ReorderStepsResult, ScreenshotEdit,
-        SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput, UpdateStepInput,
+        AppErrorResponse, AppSettings, ClearSeededDataResult, DeleteStepInput, DeleteStepResult,
+        ExportHistoryRecord, GetSessionInput, ListExportHistoryInput, ListScreenshotEditsInput,
+        ListSessionsInput, RecordingSession, RecordingStep, ReorderStepsInput, ReorderStepsResult,
+        ScreenshotEdit, SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput,
+        UpdateStepInput,
     },
     repositories::{export_history, screenshot_edits, sessions, settings, steps},
 };
@@ -179,4 +180,41 @@ pub fn reorder_steps(
     })?;
 
     steps::reorder_steps(&connection, input)
+}
+
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn dev_seed_sample_data(
+    database: State<'_, AppDatabase>,
+) -> Result<SessionDetail, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    // Development-only fixture command: inserts deterministic sample metadata
+    // with placeholder screenshot path strings only. It is registered only in
+    // debug builds and must not be presented as a production feature.
+    crate::repositories::dev_fixtures::seed_sample_data(&connection)
+}
+
+#[cfg(debug_assertions)]
+#[tauri::command]
+pub fn dev_clear_seeded_data(
+    database: State<'_, AppDatabase>,
+) -> Result<ClearSeededDataResult, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    // Development-only fixture cleanup command: removes only deterministic
+    // dev-seed rows and is registered only in debug builds.
+    crate::repositories::dev_fixtures::clear_seeded_data(&connection)
 }

@@ -1,6 +1,7 @@
 .page,
 .hero,
 .panel,
+.devPanel,
 .form {
   display: grid;
   gap: var(--spacing-24);
@@ -34,6 +35,7 @@
 .description,
 .statusText,
 .errorText,
+.devWarning,
 .field small {
   margin: 0;
   color: var(--color-silver-text);
@@ -45,6 +47,16 @@
 .panel {
   padding: var(--card-padding);
   background: var(--color-charcoal-canvas);
+}
+
+.devPanel {
+  padding: var(--card-padding);
+  border: 1px dashed var(--color-ash-text);
+  background: var(--color-pewter-accent);
+}
+
+.devWarning {
+  color: var(--color-white-frost);
 }
 
 .panelHeader {
