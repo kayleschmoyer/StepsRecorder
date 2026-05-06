@@ -1,0 +1,19 @@
+[package]
+name = "steps-recorder"
+version = "0.1.0"
+description = "Windows Steps Recorder desktop app"
+authors = ["Steps Recorder Team"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "steps_recorder_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

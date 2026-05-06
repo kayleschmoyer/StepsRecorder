@@ -1,0 +1,37 @@
+.section {
+  display: grid;
+  gap: var(--spacing-24);
+}
+
+.header {
+  display: grid;
+  max-width: 720px;
+  gap: var(--element-gap);
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--color-silver-text);
+  font-size: var(--text-caption);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: var(--color-pure-white);
+  font-size: var(--text-heading);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-heading);
+}
+
+.description {
+  margin: 0;
+  color: var(--color-porcelain-text);
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+}
