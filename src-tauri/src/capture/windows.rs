@@ -1,5 +1,5 @@
 use std::{
-    mem::size_of,
+    mem::{size_of, zeroed},
     ptr::null_mut,
     sync::{mpsc, Arc, Mutex, OnceLock},
     thread::{self, JoinHandle},
@@ -117,7 +117,7 @@ impl CaptureAdapter for WindowsClickCaptureAdapter {
 
             let _ = ready_tx.send(Ok(runtime.clone()));
 
-            let mut message = MSG::default();
+            let mut message = unsafe { zeroed::<MSG>() };
             while unsafe { GetMessageW(&mut message, null_mut(), 0, 0) } > 0 {
                 unsafe {
                     TranslateMessage(&message);
@@ -264,8 +264,8 @@ fn monitor_id(point: POINT) -> Option<String> {
     let mut monitor_info = MONITORINFOEXW {
         monitorInfo: MONITORINFO {
             cbSize: size_of::<MONITORINFOEXW>() as u32,
-            rcMonitor: Default::default(),
-            rcWork: Default::default(),
+            rcMonitor: unsafe { zeroed() },
+            rcWork: unsafe { zeroed() },
             dwFlags: 0,
         },
         szDevice: [0; 32],
