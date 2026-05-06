@@ -231,3 +231,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+.sessionStatus {
+  margin: 0;
+  color: var(--color-silver-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
+}
