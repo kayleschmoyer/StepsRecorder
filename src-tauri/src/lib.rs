@@ -31,7 +31,9 @@ pub fn run() {
             commands::update_settings,
             commands::list_sessions,
             commands::get_session,
-            commands::update_session
+            commands::update_session,
+            commands::list_screenshot_edits,
+            commands::list_export_history
         ])
         .run(tauri::generate_context!())
         .expect("error while running Steps Recorder");

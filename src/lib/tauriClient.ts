@@ -24,6 +24,18 @@ export interface GetSessionInput {
   sessionId: string;
 }
 
+export interface ListScreenshotEditsInput {
+  stepId: string;
+}
+
+export interface ScreenshotEdit {
+  id: string;
+  stepId: string;
+  editType: 'crop' | 'redact' | 'highlight' | 'arrow' | 'text';
+  editDataJson: string;
+  createdAt: string;
+}
+
 export interface RecordingStep {
   id: string;
   sessionId: string;
@@ -95,6 +107,22 @@ export interface UpdateSettingsInput {
   defaultExportDirectory?: string;
 }
 
+export interface ListExportHistoryInput {
+  sessionId: string;
+}
+
+export interface ExportHistoryRecord {
+  id: string;
+  sessionId: string;
+  exportType: 'docx' | 'pdf';
+  outputPath: string;
+  exportedAt: string;
+  includeTimestamps: boolean;
+  includeClickMarkers: boolean;
+  status: 'success' | 'failed';
+  errorMessage?: string;
+}
+
 type TauriCommandDefinition = {
   request: InvokeArgs | undefined;
   response: unknown;
@@ -125,6 +153,14 @@ type StepsRecorderCommands = {
     request: { input: UpdateSessionInput };
     response: RecordingSession;
   };
+  list_screenshot_edits: {
+    request: { input: ListScreenshotEditsInput };
+    response: ScreenshotEdit[];
+  };
+  list_export_history: {
+    request: { input: ListExportHistoryInput };
+    response: ExportHistoryRecord[];
+  };
 };
 
 type CommandMap = Record<string, TauriCommandDefinition>;
@@ -147,4 +183,6 @@ export const tauriClient = {
   listSessions: (input?: ListSessionsInput) => invokeTauriCommand('list_sessions', input ? { input } : undefined),
   getSession: (input: GetSessionInput) => invokeTauriCommand('get_session', { input }),
   updateSession: (input: UpdateSessionInput) => invokeTauriCommand('update_session', { input }),
+  listScreenshotEdits: (input: ListScreenshotEditsInput) => invokeTauriCommand('list_screenshot_edits', { input }),
+  listExportHistory: (input: ListExportHistoryInput) => invokeTauriCommand('list_export_history', { input }),
 };
