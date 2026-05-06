@@ -387,9 +387,7 @@ fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorRespo
         Graphics::Gdi::{GetDC, ReleaseDC},
         UI::{
             HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
-            WindowsAndMessaging::{
-                GetAncestor, IsIconic, IsWindowVisible, WindowFromPoint, GA_ROOT,
-            },
+            WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT},
         },
     };
 
@@ -485,14 +483,14 @@ fn validate_capture_window(
         ));
     }
 
-    if unsafe { IsWindowVisible(window) } == 0 {
+    if unsafe { windows_sys::Win32::UI::WindowsAndMessaging::IsWindowVisible(window) } == 0 {
         return Err(AppErrorResponse::new(
             "screenshot_window_error",
             "The clicked window is not visible and will not be captured.",
         ));
     }
 
-    if unsafe { IsIconic(window) } != 0 {
+    if unsafe { windows_sys::Win32::UI::WindowsAndMessaging::IsIconic(window) } != 0 {
         return Err(AppErrorResponse::new(
             "screenshot_window_error",
             "The clicked window is minimized and will not be captured.",
@@ -517,7 +515,7 @@ fn visible_window_rect(
     let dwm_ok = unsafe {
         DwmGetWindowAttribute(
             window,
-            DWMWA_EXTENDED_FRAME_BOUNDS,
+            DWMWA_EXTENDED_FRAME_BOUNDS as u32,
             &mut rect as *mut RECT as *mut _,
             size_of::<RECT>() as u32,
         )
