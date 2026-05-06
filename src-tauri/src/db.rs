@@ -33,6 +33,11 @@ fn run_migrations(connection: &Connection) -> rusqlite::Result<()> {
         connection.pragma_update(None, "user_version", 1)?;
     }
 
+    if current_version < 2 {
+        migration_002_single_active_recording(connection)?;
+        connection.pragma_update(None, "user_version", 2)?;
+    }
+
     Ok(())
 }
 
@@ -125,6 +130,16 @@ fn migration_001_initial_schema(connection: &Connection) -> rusqlite::Result<()>
             ('include_click_markers', 'true', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             ('privacy_reminder_before_export', 'true', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             ('default_export_directory', '', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+        "#,
+    )
+}
+
+fn migration_002_single_active_recording(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_recording_sessions_single_active
+            ON recording_sessions(status)
+            WHERE status = 'recording';
         "#,
     )
 }

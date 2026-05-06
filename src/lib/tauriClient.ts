@@ -24,6 +24,21 @@ export interface GetSessionInput {
   sessionId: string;
 }
 
+export interface StartRecordingSessionInput {
+  title?: string;
+  description?: string;
+}
+
+export interface StopRecordingSessionInput {
+  sessionId: string;
+}
+
+export interface RecordingStatus {
+  isRecording: boolean;
+  activeSessionId?: string;
+  elapsedSeconds?: number;
+  stepCount: number;
+}
 
 export interface ClearSeededDataResult {
   sessionId: string;
@@ -174,6 +189,18 @@ type StepsRecorderCommands = {
     request: { input: UpdateSettingsInput };
     response: AppSettings;
   };
+  start_recording_session: {
+    request: { input: StartRecordingSessionInput };
+    response: RecordingSession;
+  };
+  stop_recording_session: {
+    request: { input: StopRecordingSessionInput };
+    response: RecordingSession;
+  };
+  get_recording_status: {
+    request: undefined;
+    response: RecordingStatus;
+  };
   list_sessions: {
     request: { input?: ListSessionsInput } | undefined;
     response: SessionSummary[];
@@ -233,6 +260,9 @@ export const tauriClient = {
   getAppVersion: () => invokeTauriCommand('get_app_version', undefined),
   getSettings: () => invokeTauriCommand('get_settings', undefined),
   updateSettings: (input: UpdateSettingsInput) => invokeTauriCommand('update_settings', { input }),
+  startRecordingSession: (input: StartRecordingSessionInput = {}) => invokeTauriCommand('start_recording_session', { input }),
+  stopRecordingSession: (input: StopRecordingSessionInput) => invokeTauriCommand('stop_recording_session', { input }),
+  getRecordingStatus: () => invokeTauriCommand('get_recording_status', undefined),
   listSessions: (input?: ListSessionsInput) => invokeTauriCommand('list_sessions', input ? { input } : undefined),
   getSession: (input: GetSessionInput) => invokeTauriCommand('get_session', { input }),
   updateSession: (input: UpdateSessionInput) => invokeTauriCommand('update_session', { input }),

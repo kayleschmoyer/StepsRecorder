@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Card } from '../../components/card/Card';
 import { PageSection } from '../../components/layout/PageSection';
 import { formatDateLabel } from '../../lib/dateFormat';
-import { tauriClient } from '../../lib/tauriClient';
+import { tauriClient, type RecordingStatus } from '../../lib/tauriClient';
 import type { RecentSessionSummary } from './recordingTypes';
 import { RecordingControlBar } from './RecordingControlBar';
 import { RecordingStatusPanel } from './RecordingStatusPanel';
@@ -16,6 +16,11 @@ const emptyRecentSessions: RecentSessionSummary[] = [
     updatedAtLabel: 'Start a recording to populate this list',
   },
 ];
+
+const idleRecordingStatus: RecordingStatus = {
+  isRecording: false,
+  stepCount: 0,
+};
 
 const workflowCards = [
   {
@@ -39,17 +44,34 @@ const workflowCards = [
 export function RecordingHomePage() {
   const [recentSessions, setRecentSessions] = useState<RecentSessionSummary[]>(emptyRecentSessions);
   const [recentSessionsStatus, setRecentSessionsStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>(idleRecordingStatus);
+  const [recordingStatusState, setRecordingStatusState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [recordingActionState, setRecordingActionState] = useState<'idle' | 'starting' | 'stopping'>('idle');
+  const [recordingError, setRecordingError] = useState<string | undefined>();
 
   useEffect(() => {
-    let isMounted = true;
+    refreshRecentSessions();
+    refreshRecordingStatus();
+  }, []);
+
+  useEffect(() => {
+    if (!recordingStatus.isRecording) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      refreshRecordingStatus();
+    }, 1000);
+
+    return () => window.clearInterval(intervalId);
+  }, [recordingStatus.isRecording]);
+
+  function refreshRecentSessions() {
+    setRecentSessionsStatus('loading');
 
     tauriClient
       .listSessions({ limit: 5, includeArchived: false })
       .then((sessions) => {
-        if (!isMounted) {
-          return;
-        }
-
         setRecentSessions(
           sessions.length > 0
             ? sessions.map((session) => ({
@@ -63,18 +85,68 @@ export function RecordingHomePage() {
         setRecentSessionsStatus('ready');
       })
       .catch(() => {
-        if (!isMounted) {
-          return;
-        }
-
         setRecentSessions(emptyRecentSessions);
         setRecentSessionsStatus('error');
       });
+  }
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  function refreshRecordingStatus() {
+    tauriClient
+      .getRecordingStatus()
+      .then((status) => {
+        setRecordingStatus(status);
+        setRecordingStatusState('ready');
+      })
+      .catch(() => {
+        setRecordingStatus(idleRecordingStatus);
+        setRecordingStatusState('error');
+      });
+  }
+
+  function handleStartRecording() {
+    setRecordingActionState('starting');
+    setRecordingError(undefined);
+
+    tauriClient
+      .startRecordingSession({})
+      .then((session) => {
+        setRecordingStatus({
+          isRecording: session.status === 'recording',
+          activeSessionId: session.id,
+          elapsedSeconds: 0,
+          stepCount: session.stepCount,
+        });
+        setRecordingStatusState('ready');
+        refreshRecentSessions();
+      })
+      .catch((error: unknown) => {
+        setRecordingError(getErrorMessage(error));
+        refreshRecordingStatus();
+      })
+      .finally(() => setRecordingActionState('idle'));
+  }
+
+  function handleStopRecording() {
+    if (!recordingStatus.activeSessionId) {
+      return;
+    }
+
+    setRecordingActionState('stopping');
+    setRecordingError(undefined);
+
+    tauriClient
+      .stopRecordingSession({ sessionId: recordingStatus.activeSessionId })
+      .then(() => {
+        setRecordingStatus(idleRecordingStatus);
+        setRecordingStatusState('ready');
+        refreshRecentSessions();
+      })
+      .catch((error: unknown) => {
+        setRecordingError(getErrorMessage(error));
+        refreshRecordingStatus();
+      })
+      .finally(() => setRecordingActionState('idle'));
+  }
 
   return (
     <div className={styles.page}>
@@ -93,8 +165,18 @@ export function RecordingHomePage() {
             <p className={styles.panelEyebrow}>Recorder workspace</p>
             <h2 id="ready-to-record-title" className={styles.panelTitle}>Ready to Record</h2>
           </div>
-          <RecordingStatusPanel />
-          <RecordingControlBar />
+          <RecordingStatusPanel
+            errorMessage={recordingError}
+            loadState={recordingStatusState}
+            status={recordingStatus}
+          />
+          <RecordingControlBar
+            activeSessionId={recordingStatus.activeSessionId}
+            isBusy={recordingActionState !== 'idle'}
+            isRecording={recordingStatus.isRecording}
+            onStartRecording={handleStartRecording}
+            onStopRecording={handleStopRecording}
+          />
           <p className={styles.privacyNote}>
             Privacy reminder: close passwords, customer data, and personal documents before starting a session.
           </p>
@@ -174,4 +256,16 @@ function formatSessionDateLabel(value: string): string {
   }
 
   return formatDateLabel(date);
+}
+
+function getErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+
+    if (typeof message === 'string' && message.length > 0) {
+      return message;
+    }
+  }
+
+  return 'The recording command could not be completed.';
 }

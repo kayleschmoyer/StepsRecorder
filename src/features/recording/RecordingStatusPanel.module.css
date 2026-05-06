@@ -2,7 +2,7 @@
   display: inline-flex;
   width: 100%;
   gap: var(--spacing-12);
-  align-items: center;
+  align-items: flex-start;
   padding: var(--spacing-12) var(--spacing-16);
   border: 1px solid var(--color-ash-text);
   border-radius: var(--radius-md);
@@ -12,12 +12,26 @@
 .statusDot {
   width: var(--spacing-8);
   height: var(--spacing-8);
+  margin-top: var(--spacing-6);
+  flex: 0 0 auto;
   border-radius: var(--radius-pill);
+  background: var(--color-stone-text);
+}
+
+.statusDotRecording {
   background: var(--color-golden-gradient);
 }
 
+.content {
+  display: grid;
+  gap: var(--spacing-6);
+  min-width: 0;
+}
+
 .label,
-.value {
+.value,
+.meta,
+.error {
   margin: 0;
 }
 
@@ -29,6 +43,50 @@
 }
 
 .value {
+  color: var(--color-white-frost);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
+}
+
+.meta,
+.error {
+  overflow-wrap: anywhere;
+  color: var(--color-stone-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+}
+
+.error {
+  color: var(--color-golden-gradient);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-12);
+  margin: 0;
+}
+
+.stats div {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.stats dt,
+.stats dd {
+  margin: 0;
+}
+
+.stats dt {
+  color: var(--color-stone-text);
+  font-size: var(--text-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+}
+
+.stats dd {
   color: var(--color-white-frost);
   font-size: var(--text-body-sm);
   line-height: var(--leading-body-sm);
