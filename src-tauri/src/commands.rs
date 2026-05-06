@@ -3,11 +3,12 @@ use tauri::State;
 use crate::{
     db::AppDatabase,
     models::{
-        AppErrorResponse, AppSettings, ExportHistoryRecord, GetSessionInput,
-        ListExportHistoryInput, ListScreenshotEditsInput, ListSessionsInput, RecordingSession,
-        ScreenshotEdit, SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput,
+        AppErrorResponse, AppSettings, DeleteStepInput, DeleteStepResult, ExportHistoryRecord,
+        GetSessionInput, ListExportHistoryInput, ListScreenshotEditsInput, ListSessionsInput,
+        RecordingSession, RecordingStep, ReorderStepsInput, ReorderStepsResult, ScreenshotEdit,
+        SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput, UpdateStepInput,
     },
-    repositories::{export_history, screenshot_edits, sessions, settings},
+    repositories::{export_history, screenshot_edits, sessions, settings, steps},
 };
 
 #[tauri::command]
@@ -130,4 +131,52 @@ pub fn list_export_history(
     })?;
 
     export_history::list_export_history_for_session(&connection, &input.session_id)
+}
+
+#[tauri::command]
+pub fn update_step(
+    input: UpdateStepInput,
+    database: State<'_, AppDatabase>,
+) -> Result<RecordingStep, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    steps::update_step(&connection, input)
+}
+
+#[tauri::command]
+pub fn delete_step(
+    input: DeleteStepInput,
+    database: State<'_, AppDatabase>,
+) -> Result<DeleteStepResult, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    steps::delete_step(&connection, input)
+}
+
+#[tauri::command]
+pub fn reorder_steps(
+    input: ReorderStepsInput,
+    database: State<'_, AppDatabase>,
+) -> Result<ReorderStepsResult, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    steps::reorder_steps(&connection, input)
 }

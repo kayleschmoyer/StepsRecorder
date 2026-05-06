@@ -75,6 +75,32 @@ export interface UpdateSessionInput {
   includeClickMarkersDefault?: boolean;
 }
 
+export interface UpdateStepInput {
+  stepId: string;
+  title?: string;
+  description?: string;
+}
+
+export interface DeleteStepInput {
+  stepId: string;
+}
+
+export interface DeleteStepResult {
+  stepId: string;
+  sessionId: string;
+  deleted: boolean;
+}
+
+export interface ReorderStepsInput {
+  sessionId: string;
+  orderedStepIds: string[];
+}
+
+export interface ReorderStepsResult {
+  sessionId: string;
+  steps: RecordingStep[];
+}
+
 export interface RecordingSession {
   id: string;
   title: string;
@@ -153,6 +179,18 @@ type StepsRecorderCommands = {
     request: { input: UpdateSessionInput };
     response: RecordingSession;
   };
+  update_step: {
+    request: { input: UpdateStepInput };
+    response: RecordingStep;
+  };
+  delete_step: {
+    request: { input: DeleteStepInput };
+    response: DeleteStepResult;
+  };
+  reorder_steps: {
+    request: { input: ReorderStepsInput };
+    response: ReorderStepsResult;
+  };
   list_screenshot_edits: {
     request: { input: ListScreenshotEditsInput };
     response: ScreenshotEdit[];
@@ -183,6 +221,9 @@ export const tauriClient = {
   listSessions: (input?: ListSessionsInput) => invokeTauriCommand('list_sessions', input ? { input } : undefined),
   getSession: (input: GetSessionInput) => invokeTauriCommand('get_session', { input }),
   updateSession: (input: UpdateSessionInput) => invokeTauriCommand('update_session', { input }),
+  updateStep: (input: UpdateStepInput) => invokeTauriCommand('update_step', { input }),
+  deleteStep: (input: DeleteStepInput) => invokeTauriCommand('delete_step', { input }),
+  reorderSteps: (input: ReorderStepsInput) => invokeTauriCommand('reorder_steps', { input }),
   listScreenshotEdits: (input: ListScreenshotEditsInput) => invokeTauriCommand('list_screenshot_edits', { input }),
   listExportHistory: (input: ListExportHistoryInput) => invokeTauriCommand('list_export_history', { input }),
 };

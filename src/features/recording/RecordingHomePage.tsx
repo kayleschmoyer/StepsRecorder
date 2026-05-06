@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Button } from '../../components/button/Button';
 import { Card } from '../../components/card/Card';
 import { PageSection } from '../../components/layout/PageSection';
 import { formatDateLabel } from '../../lib/dateFormat';
@@ -25,7 +24,7 @@ const workflowCards = [
   },
   {
     title: 'Recent Sessions',
-    description: 'Review captured walkthroughs after SQLite-backed sessions are added.',
+    description: 'Open recent SQLite-backed sessions for review once capture creates steps.',
   },
   {
     title: 'Privacy Reminder',
@@ -33,7 +32,7 @@ const workflowCards = [
   },
   {
     title: 'Settings shortcut',
-    description: 'Configure capture preferences once settings storage is implemented.',
+    description: 'Configure capture preferences saved through the typed Tauri settings commands.',
   },
 ];
 
@@ -125,7 +124,7 @@ export function RecordingHomePage() {
               <p className={styles.panelEyebrow}>Recent Sessions</p>
               <h2 id="recent-sessions-title" className={styles.panelTitle}>Latest recordings</h2>
             </div>
-            <Button variant="text">View all</Button>
+            <a className={styles.panelLink} href="#/">View all</a>
           </div>
           {recentSessionsStatus === 'loading' && (
             <p className={styles.sessionStatus}>Loading recent sessions…</p>
@@ -136,10 +135,17 @@ export function RecordingHomePage() {
           <ul className={styles.sessionList}>
             {recentSessions.map((session) => (
               <li className={styles.sessionItem} key={session.id}>
-                <span>
-                  <strong>{session.title}</strong>
-                  <small>{session.updatedAtLabel}</small>
-                </span>
+                {session.id === 'empty-session-list' ? (
+                  <span>
+                    <strong>{session.title}</strong>
+                    <small>{session.updatedAtLabel}</small>
+                  </span>
+                ) : (
+                  <a className={styles.sessionLink} href={`#/sessions/${encodeURIComponent(session.id)}`}>
+                    <strong>{session.title}</strong>
+                    <small>{session.updatedAtLabel}</small>
+                  </a>
+                )}
                 <span className={styles.stepCount}>{session.stepCount} steps</span>
               </li>
             ))}
@@ -153,7 +159,7 @@ export function RecordingHomePage() {
             Screenshots can include private data. Before starting a session, move passwords, tokens, customer data,
             and personal documents away from the visible workspace.
           </p>
-          <a className={styles.settingsLink} id="settings" href="#settings">Open Settings shortcut</a>
+          <a className={styles.settingsLink} id="settings" href="#/settings">Open Settings</a>
         </Card>
       </section>
     </div>

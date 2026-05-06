@@ -135,6 +135,42 @@ pub struct UpdateSessionInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct UpdateStepInput {
+    pub step_id: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteStepInput {
+    pub step_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteStepResult {
+    pub step_id: String,
+    pub session_id: String,
+    pub deleted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderStepsInput {
+    pub session_id: String,
+    pub ordered_step_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderStepsResult {
+    pub session_id: String,
+    pub steps: Vec<RecordingStep>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateSettingsInput {
     pub click_debounce_ms: Option<i64>,
     pub include_timestamps_in_export: Option<bool>,
