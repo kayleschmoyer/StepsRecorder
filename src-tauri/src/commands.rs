@@ -169,16 +169,39 @@ pub fn get_step_screenshot_preview(
         return Ok(StepScreenshotPreview {
             exists: false,
             original_screenshot_path: step.original_screenshot_path,
+            edited_screenshot_path: step.edited_screenshot_path,
+            displayed_screenshot_path: None,
+            preview_kind: "missing".to_string(),
             data_url: None,
         });
     }
 
-    let bytes = match std::fs::read(&step.original_screenshot_path) {
+    let preferred_path = step
+        .edited_screenshot_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|path| !path.is_empty());
+    let (preview_path, preview_kind) = match preferred_path {
+        Some(path) if std::path::Path::new(path).exists() => (path.to_string(), "click_marker"),
+        Some(path) => {
+            eprintln!(
+                "screenshot.preview event=marked_missing step_id={} edited_path={}",
+                step.id, path
+            );
+            (step.original_screenshot_path.clone(), "original")
+        }
+        None => (step.original_screenshot_path.clone(), "original"),
+    };
+
+    let bytes = match std::fs::read(&preview_path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(StepScreenshotPreview {
                 exists: false,
                 original_screenshot_path: step.original_screenshot_path,
+                edited_screenshot_path: step.edited_screenshot_path,
+                displayed_screenshot_path: None,
+                preview_kind: "missing".to_string(),
                 data_url: None,
             });
         }
@@ -195,6 +218,9 @@ pub fn get_step_screenshot_preview(
     Ok(StepScreenshotPreview {
         exists: true,
         original_screenshot_path: step.original_screenshot_path,
+        edited_screenshot_path: step.edited_screenshot_path,
+        displayed_screenshot_path: Some(preview_path),
+        preview_kind: preview_kind.to_string(),
         data_url: Some(format!("data:image/png;base64,{encoded}")),
     })
 }

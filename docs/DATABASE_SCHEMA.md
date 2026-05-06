@@ -67,7 +67,7 @@ Stores one recorded step.
 | app_window_title | TEXT | No | Best-effort active window title |
 | process_name | TEXT | No | Best-effort active process name |
 | original_screenshot_path | TEXT | Yes | File path; during Step 8 metadata-only click persistence this is the documented placeholder `SCREENSHOT_CAPTURE_PENDING_STEP_8_METADATA_ONLY` and no image file is written. |
-| edited_screenshot_path | TEXT | No | File path |
+| edited_screenshot_path | TEXT | No | File path for a derived non-destructive image, including the Step 10 generated click-marker preview (`step-0001-marked.png`); original files remain in `original_screenshot_path`. |
 | thumbnail_path | TEXT | No | Optional preview image |
 | is_deleted | INTEGER | Yes | 0 or 1 |
 | created_at | TEXT | Yes | ISO timestamp |
@@ -78,7 +78,7 @@ Stores one recorded step.
 - A step must belong to a session.
 - A step must have a screenshot path. Step 8 metadata-only clicks use the placeholder `SCREENSHOT_CAPTURE_PENDING_STEP_8_METADATA_ONLY` until screenshot capture is implemented; this placeholder is not a real file path.
 - `step_number` must be unique within active steps for the session.
-- Export uses `edited_screenshot_path` when present; otherwise it uses `original_screenshot_path`.
+- Session Review and future export flows use `edited_screenshot_path` when present; otherwise they use `original_screenshot_path`. Step 10 stores generated click-marker previews in `edited_screenshot_path` without overwriting originals.
 - Deleted steps are excluded from export.
 
 ## screenshot_edits

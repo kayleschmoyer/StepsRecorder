@@ -300,7 +300,7 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
 type ScreenshotPreviewState =
   | { status: 'missing'; dataUrl?: undefined }
   | { status: 'loading'; dataUrl?: undefined }
-  | { status: 'ready'; dataUrl: string }
+  | { status: 'ready'; dataUrl: string; previewKind: 'original' | 'click_marker'; displayedScreenshotPath: string; editedScreenshotPath?: string }
   | { status: 'error'; dataUrl?: undefined };
 
 function StepScreenshotPreviewPanel({ step }: { step: RecordingStep }) {
@@ -327,7 +327,13 @@ function StepScreenshotPreviewPanel({ step }: { step: RecordingStep }) {
         }
 
         if (result.exists && result.dataUrl) {
-          setPreview({ status: 'ready', dataUrl: result.dataUrl });
+          setPreview({
+            status: 'ready',
+            dataUrl: result.dataUrl,
+            previewKind: result.previewKind === 'click_marker' ? 'click_marker' : 'original',
+            displayedScreenshotPath: result.displayedScreenshotPath ?? result.originalScreenshotPath,
+            editedScreenshotPath: result.editedScreenshotPath,
+          });
         } else {
           setPreview({ status: 'missing' });
         }
@@ -341,13 +347,22 @@ function StepScreenshotPreviewPanel({ step }: { step: RecordingStep }) {
     return () => {
       isMounted = false;
     };
-  }, [step.id, step.originalScreenshotPath]);
+  }, [step.id, step.originalScreenshotPath, step.editedScreenshotPath]);
 
   if (preview.status === 'ready') {
+    const isMarkedPreview = preview.previewKind === 'click_marker';
+
     return (
       <figure className={styles.screenshotPreview}>
         <img src={preview.dataUrl} alt={`Visible monitor screenshot for step ${step.stepNumber}`} />
-        <figcaption>Original screenshot: {step.originalScreenshotPath}</figcaption>
+        <figcaption>
+          <span className={styles.previewStatusList}>
+            <span>Original screenshot captured</span>
+            <span>{isMarkedPreview ? 'Click marker preview shown' : 'Original screenshot preview shown'}</span>
+          </span>
+          <span className={styles.previewPath}>Original: {step.originalScreenshotPath}</span>
+          {isMarkedPreview ? <span className={styles.previewPath}>Marked preview: {preview.displayedScreenshotPath}</span> : null}
+        </figcaption>
       </figure>
     );
   }

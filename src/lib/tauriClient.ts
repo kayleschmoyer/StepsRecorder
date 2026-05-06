@@ -57,6 +57,9 @@ export interface GetStepScreenshotPreviewInput {
 export interface StepScreenshotPreview {
   exists: boolean;
   originalScreenshotPath: string;
+  editedScreenshotPath?: string;
+  displayedScreenshotPath?: string;
+  previewKind: 'missing' | 'original' | 'click_marker';
   dataUrl?: string;
 }
 

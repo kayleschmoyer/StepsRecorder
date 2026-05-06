@@ -10,7 +10,10 @@ use rusqlite::Connection;
 use crate::{
     capture::{
         default_capture_adapter,
-        screenshot::{capture_original_screenshot_for_step, ScreenshotStorage},
+        screenshot::{
+            capture_original_screenshot_for_step, generate_marked_screenshot_for_step,
+            ScreenshotStorage,
+        },
         ActiveCaptureSession, CaptureState, SharedCaptureState, SharedCaptureStateHandle,
     },
     models::AppErrorResponse,
@@ -471,15 +474,24 @@ fn capture_and_attach_screenshot(
         Ok(capture) => {
             let path = capture.path.to_string_lossy().to_string();
             match steps::update_original_screenshot_path(connection, &step.id, &path) {
-                Ok(updated_step) => println!(
-                    "capture.screenshot event=written session_id={} step_id={} step_number={} width={} height={} path={}",
-                    updated_step.session_id,
-                    updated_step.id,
-                    updated_step.step_number,
-                    capture.width,
-                    capture.height,
-                    path
-                ),
+                Ok(updated_step) => {
+                    println!(
+                        "capture.screenshot event=written session_id={} step_id={} step_number={} width={} height={} path={}",
+                        updated_step.session_id,
+                        updated_step.id,
+                        updated_step.step_number,
+                        capture.width,
+                        capture.height,
+                        path
+                    );
+                    generate_and_attach_marked_screenshot(
+                        connection,
+                        storage,
+                        event,
+                        &updated_step,
+                        &capture,
+                    );
+                }
                 Err(error) => eprintln!(
                     "capture.screenshot event=path_update_error session_id={} step_id={} code={} message={}",
                     step.session_id, step.id, error.code, error.message
@@ -488,6 +500,39 @@ fn capture_and_attach_screenshot(
         }
         Err(error) => eprintln!(
             "capture.screenshot event=capture_error session_id={} step_id={} step_number={} code={} message={}",
+            step.session_id, step.id, step.step_number, error.code, error.message
+        ),
+    }
+}
+
+fn generate_and_attach_marked_screenshot(
+    connection: &Connection,
+    storage: &ScreenshotStorage,
+    event: &CapturedClickEvent,
+    step: &crate::models::RecordingStep,
+    original_capture: &crate::capture::screenshot::ScreenshotCaptureResult,
+) {
+    match generate_marked_screenshot_for_step(storage, event, step.step_number, original_capture) {
+        Ok(marked_capture) => {
+            let path = marked_capture.path.to_string_lossy().to_string();
+            match steps::update_edited_screenshot_path(connection, &step.id, &path) {
+                Ok(updated_step) => println!(
+                    "capture.screenshot_marker event=written session_id={} step_id={} step_number={} marker_x={} marker_y={} path={}",
+                    updated_step.session_id,
+                    updated_step.id,
+                    updated_step.step_number,
+                    marked_capture.marker_x,
+                    marked_capture.marker_y,
+                    path
+                ),
+                Err(error) => eprintln!(
+                    "capture.screenshot_marker event=path_update_error session_id={} step_id={} code={} message={}",
+                    step.session_id, step.id, error.code, error.message
+                ),
+            }
+        }
+        Err(error) => eprintln!(
+            "capture.screenshot_marker event=generation_error session_id={} step_id={} step_number={} code={} message={}",
             step.session_id, step.id, step.step_number, error.code, error.message
         ),
     }

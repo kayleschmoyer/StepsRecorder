@@ -112,6 +112,31 @@ pub fn update_original_screenshot_path(
     get_active_step(connection, step_id)
 }
 
+pub fn update_edited_screenshot_path(
+    connection: &Connection,
+    step_id: &str,
+    edited_screenshot_path: &str,
+) -> Result<RecordingStep, AppErrorResponse> {
+    if edited_screenshot_path.trim().is_empty() {
+        return Err(AppErrorResponse::new(
+            "screenshot_path_empty",
+            "Edited screenshot path cannot be empty after marker generation succeeds.",
+        ));
+    }
+
+    connection
+        .execute(
+            "UPDATE recording_steps
+             SET edited_screenshot_path = ?1,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?2 AND is_deleted = 0",
+            params![edited_screenshot_path.trim(), step_id],
+        )
+        .map_err(to_database_write_error)?;
+
+    get_active_step(connection, step_id)
+}
+
 pub fn list_active_steps_for_session(
     connection: &Connection,
     session_id: &str,
