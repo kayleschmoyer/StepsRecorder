@@ -7,7 +7,7 @@ use std::{
 use crate::{capture::service::CapturedClickEvent, models::AppErrorResponse};
 
 #[cfg(windows)]
-use windows_sys::Win32::Graphics::Gdi::HDC;
+use windows_sys::Win32::{Foundation::RECT, Graphics::Gdi::HDC};
 
 #[derive(Debug, Clone)]
 pub struct ScreenshotStorage {
@@ -387,7 +387,7 @@ fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorRespo
         Graphics::Gdi::{GetDC, ReleaseDC},
         UI::{
             HiDpi::{SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
-            WindowsAndMessaging::{GetAncestor, WindowFromPoint, GA_ROOT},
+            WindowsAndMessaging::{GetAncestor, WindowFromPhysicalPoint, WindowFromPoint, GA_ROOT},
         },
     };
 
@@ -399,7 +399,12 @@ fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorRespo
             x: clamp_i64_to_i32(x),
             y: clamp_i64_to_i32(y),
         };
-        let clicked = unsafe { WindowFromPoint(point) };
+        let clicked = unsafe { WindowFromPhysicalPoint(point) };
+        let clicked = if clicked.is_null() {
+            unsafe { WindowFromPoint(point) }
+        } else {
+            clicked
+        };
         if clicked.is_null() {
             return Err(AppErrorResponse::new(
                 "screenshot_window_error",
@@ -411,29 +416,26 @@ fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorRespo
         let window = if root.is_null() { clicked } else { root };
         validate_capture_window(window)?;
 
-        let rect = visible_window_rect(window)?;
-        if point.x < rect.left
-            || point.x >= rect.right
-            || point.y < rect.top
-            || point.y >= rect.bottom
-        {
+        let window_rect = visible_window_rect(window)?;
+        let capture_rect = clip_rect_to_virtual_desktop(window_rect)?;
+        if !point_in_rect(point, capture_rect) {
             return Err(AppErrorResponse::new(
                 "screenshot_window_error",
                 "The click point was outside the resolved top-level window bounds.",
             ));
         }
 
-        let width_i32 = rect.right.saturating_sub(rect.left);
-        let height_i32 = rect.bottom.saturating_sub(rect.top);
-        if width_i32 <= 0 || height_i32 <= 0 {
-            return Err(AppErrorResponse::new(
+        let (width_i32, height_i32) = rect_size(capture_rect).ok_or_else(|| {
+            AppErrorResponse::new(
                 "screenshot_window_error",
                 "The resolved window bounds were empty.",
-            ));
-        }
+            )
+        })?;
 
         let width = width_i32 as u32;
         let height = height_i32 as u32;
+        let marker_x = marker_offset(x, capture_rect.left, width);
+        let marker_y = marker_offset(y, capture_rect.top, height);
         let screen_dc = unsafe { GetDC(null_mut()) };
         if screen_dc.is_null() {
             return Err(AppErrorResponse::new(
@@ -445,16 +447,14 @@ fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorRespo
         let capture = unsafe {
             capture_dc_region(
                 screen_dc,
-                rect.left,
-                rect.top,
+                capture_rect.left,
+                capture_rect.top,
                 width_i32,
                 height_i32,
                 width,
                 height,
-                x.saturating_sub(i64::from(rect.left))
-                    .clamp(0, i64::from(width.saturating_sub(1))) as u32,
-                y.saturating_sub(i64::from(rect.top))
-                    .clamp(0, i64::from(height.saturating_sub(1))) as u32,
+                marker_x,
+                marker_y,
             )
         };
         unsafe {
@@ -470,6 +470,56 @@ fn capture_clicked_window(x: i64, y: i64) -> Result<CapturedImage, AppErrorRespo
     }
 
     result
+}
+
+#[cfg(windows)]
+fn point_in_rect(point: windows_sys::Win32::Foundation::POINT, rect: RECT) -> bool {
+    point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+}
+
+#[cfg(windows)]
+fn rect_size(rect: RECT) -> Option<(i32, i32)> {
+    let width = rect.right.checked_sub(rect.left)?;
+    let height = rect.bottom.checked_sub(rect.top)?;
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+#[cfg(windows)]
+fn marker_offset(coordinate: i64, origin: i32, extent: u32) -> u32 {
+    coordinate
+        .saturating_sub(i64::from(origin))
+        .clamp(0, i64::from(extent.saturating_sub(1))) as u32
+}
+
+#[cfg(windows)]
+fn clip_rect_to_virtual_desktop(rect: RECT) -> Result<RECT, AppErrorResponse> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN,
+    };
+
+    let desktop_left = unsafe { GetSystemMetrics(SM_XVIRTUALSCREEN) };
+    let desktop_top = unsafe { GetSystemMetrics(SM_YVIRTUALSCREEN) };
+    let desktop_width = unsafe { GetSystemMetrics(SM_CXVIRTUALSCREEN) };
+    let desktop_height = unsafe { GetSystemMetrics(SM_CYVIRTUALSCREEN) };
+    let desktop_right = desktop_left.saturating_add(desktop_width);
+    let desktop_bottom = desktop_top.saturating_add(desktop_height);
+
+    let clipped = RECT {
+        left: rect.left.max(desktop_left),
+        top: rect.top.max(desktop_top),
+        right: rect.right.min(desktop_right),
+        bottom: rect.bottom.min(desktop_bottom),
+    };
+
+    if rect_size(clipped).is_none() {
+        return Err(AppErrorResponse::new(
+            "screenshot_window_error",
+            "The resolved window bounds were outside the virtual desktop.",
+        ));
+    }
+
+    Ok(clipped)
 }
 
 #[cfg(windows)]
