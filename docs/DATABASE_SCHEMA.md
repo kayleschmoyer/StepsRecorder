@@ -66,7 +66,7 @@ Stores one recorded step.
 | monitor_id | TEXT | No | Display identifier |
 | app_window_title | TEXT | No | Best-effort active window title |
 | process_name | TEXT | No | Best-effort active process name |
-| original_screenshot_path | TEXT | Yes | File path |
+| original_screenshot_path | TEXT | Yes | File path; during Step 8 metadata-only click persistence this is the documented placeholder `SCREENSHOT_CAPTURE_PENDING_STEP_8_METADATA_ONLY` and no image file is written. |
 | edited_screenshot_path | TEXT | No | File path |
 | thumbnail_path | TEXT | No | Optional preview image |
 | is_deleted | INTEGER | Yes | 0 or 1 |
@@ -76,7 +76,7 @@ Stores one recorded step.
 ### Rules
 
 - A step must belong to a session.
-- A step must have a screenshot path.
+- A step must have a screenshot path. Step 8 metadata-only clicks use the placeholder `SCREENSHOT_CAPTURE_PENDING_STEP_8_METADATA_ONLY` until screenshot capture is implemented; this placeholder is not a real file path.
 - `step_number` must be unique within active steps for the session.
 - Export uses `edited_screenshot_path` when present; otherwise it uses `original_screenshot_path`.
 - Deleted steps are excluded from export.

@@ -1,7 +1,10 @@
 use std::{
-    sync::{Arc, MutexGuard},
+    sync::{mpsc, Arc, Mutex, MutexGuard},
+    thread,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use rusqlite::Connection;
 
 use crate::{
     capture::{
@@ -9,11 +12,13 @@ use crate::{
         SharedCaptureStateHandle,
     },
     models::AppErrorResponse,
+    repositories::steps,
 };
 
 pub struct CaptureService {
     state: SharedCaptureStateHandle,
     adapter: std::sync::Mutex<Box<dyn CaptureAdapter>>,
+    step_event_sender: Option<mpsc::Sender<CapturedClickEvent>>,
 }
 
 pub trait CaptureAdapter: Send {
@@ -29,6 +34,7 @@ pub trait CaptureAdapter: Send {
 #[derive(Debug, Clone)]
 pub struct CaptureEventSink {
     state: SharedCaptureStateHandle,
+    step_event_sender: Option<mpsc::Sender<CapturedClickEvent>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,14 +73,25 @@ pub enum ClickIngestResult {
 }
 
 impl CaptureService {
-    pub fn new() -> Self {
-        Self::with_adapter(default_capture_adapter())
+    pub fn new(database: Arc<Mutex<Connection>>) -> Self {
+        Self::with_adapter_and_database(default_capture_adapter(), Some(database))
     }
 
+    #[cfg(test)]
     pub(crate) fn with_adapter(adapter: Box<dyn CaptureAdapter>) -> Self {
+        Self::with_adapter_and_database(adapter, None)
+    }
+
+    fn with_adapter_and_database(
+        adapter: Box<dyn CaptureAdapter>,
+        database: Option<Arc<Mutex<Connection>>>,
+    ) -> Self {
+        let step_event_sender = database.map(spawn_step_persistence_worker);
+
         Self {
             state: Arc::new(SharedCaptureState::default()),
             adapter: std::sync::Mutex::new(adapter),
+            step_event_sender,
         }
     }
 
@@ -171,10 +188,9 @@ impl CaptureService {
 
     /// Internal click pipeline shared by native adapters and tests.
     ///
-    /// Step 7 routes Windows-native click metadata through this boundary only
-    /// while a session is active. This method intentionally only stores events
-    /// in process memory and logs decisions; it does not capture screenshots,
-    /// write image files, or persist `recording_steps`.
+    /// Step 8 routes Windows-native click metadata through this boundary only
+    /// while a session is active. Accepted events are forwarded to a service-side
+    /// persistence worker; this method does not capture screenshots or write image files.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn ingest_placeholder_click(
         &self,
@@ -197,7 +213,7 @@ impl CaptureService {
         &self,
         event: NativeClickEvent,
     ) -> Result<ClickIngestResult, AppErrorResponse> {
-        CaptureEventSink::new(self.state.clone()).ingest_click(event)
+        self.event_sink().ingest_click(event)
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -231,7 +247,7 @@ impl CaptureService {
                     error.to_string(),
                 )
             })?
-            .start(session_id, CaptureEventSink::new(self.state.clone()))
+            .start(session_id, self.event_sink())
     }
 
     fn stop_adapter(&self, session_id: &str) -> Result<(), AppErrorResponse> {
@@ -247,21 +263,46 @@ impl CaptureService {
             .stop(session_id)
     }
 
+    fn event_sink(&self) -> CaptureEventSink {
+        CaptureEventSink::new(self.state.clone(), self.step_event_sender.clone())
+    }
+
     fn lock_state(&self) -> Result<MutexGuard<'_, CaptureState>, AppErrorResponse> {
         lock_capture_state(&self.state)
     }
 }
 
 impl CaptureEventSink {
-    pub(crate) fn new(state: SharedCaptureStateHandle) -> Self {
-        Self { state }
+    pub(crate) fn new(
+        state: SharedCaptureStateHandle,
+        step_event_sender: Option<mpsc::Sender<CapturedClickEvent>>,
+    ) -> Self {
+        Self {
+            state,
+            step_event_sender,
+        }
     }
 
     pub fn ingest_click(
         &self,
         event: NativeClickEvent,
     ) -> Result<ClickIngestResult, AppErrorResponse> {
-        ingest_click_into_state(&self.state, event)
+        let result = ingest_click_into_state(&self.state, event)?;
+
+        if let ClickIngestResult::Accepted = result {
+            if let Some(accepted_event) = latest_accepted_click(&self.state)? {
+                if let Some(sender) = &self.step_event_sender {
+                    if let Err(error) = sender.send(accepted_event) {
+                        eprintln!(
+                            "capture.step event=queue_error message=accepted_click_not_persisted details={}",
+                            error
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 
@@ -278,6 +319,11 @@ fn ingest_click_into_state(
         return Ok(ClickIngestResult::IgnoredSessionMismatch);
     }
 
+    let monitor_id = sanitize_optional_metadata(event.context.monitor_id.clone(), 100);
+    let active_window_title =
+        sanitize_optional_metadata(event.context.active_window_title.clone(), 200);
+    let process_name = sanitize_optional_metadata(event.context.process_name.clone(), 100);
+
     if is_duplicate_click(
         active.last_accepted_click_timestamp_ms,
         event.timestamp_ms,
@@ -290,9 +336,9 @@ fn ingest_click_into_state(
             event.y,
             event.timestamp_ms,
             active.debounce_ms,
-            log_optional(&event.context.monitor_id),
-            log_optional(&event.context.active_window_title),
-            log_optional(&event.context.process_name)
+            log_optional(&monitor_id),
+            log_optional(&active_window_title),
+            log_optional(&process_name)
         );
         return Ok(ClickIngestResult::IgnoredDebounce);
     }
@@ -303,9 +349,9 @@ fn ingest_click_into_state(
         x: event.x,
         y: event.y,
         timestamp_ms: event.timestamp_ms,
-        monitor_id: event.context.monitor_id.clone(),
-        active_window_title: event.context.active_window_title.clone(),
-        process_name: event.context.process_name.clone(),
+        monitor_id: monitor_id.clone(),
+        active_window_title: active_window_title.clone(),
+        process_name: process_name.clone(),
     });
 
     println!(
@@ -315,9 +361,9 @@ fn ingest_click_into_state(
         event.y,
         event.timestamp_ms,
         active.debounce_ms,
-        log_optional(&event.context.monitor_id),
-        log_optional(&event.context.active_window_title),
-        log_optional(&event.context.process_name)
+        log_optional(&monitor_id),
+        log_optional(&active_window_title),
+        log_optional(&process_name)
     );
 
     Ok(ClickIngestResult::Accepted)
@@ -350,6 +396,74 @@ fn current_timestamp_ms() -> u128 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or_default()
+}
+
+fn latest_accepted_click(
+    state: &SharedCaptureState,
+) -> Result<Option<CapturedClickEvent>, AppErrorResponse> {
+    Ok(lock_capture_state(state)?
+        .active_session
+        .as_ref()
+        .and_then(|active| active.accepted_clicks.last().cloned()))
+}
+
+fn spawn_step_persistence_worker(
+    database: Arc<Mutex<Connection>>,
+) -> mpsc::Sender<CapturedClickEvent> {
+    let (sender, receiver) = mpsc::channel::<CapturedClickEvent>();
+
+    thread::spawn(move || {
+        for event in receiver {
+            let connection = match database.lock() {
+                Ok(connection) => connection,
+                Err(error) => {
+                    eprintln!(
+                        "capture.step event=persist_error session_id={} message=database_lock_failed details={}",
+                        event.session_id, error
+                    );
+                    continue;
+                }
+            };
+
+            match steps::create_recorded_click_step(&connection, &event) {
+                Ok(step) => println!(
+                    "capture.step event=created session_id={} step_id={} step_number={} x={} y={} process_name={}",
+                    step.session_id,
+                    step.id,
+                    step.step_number,
+                    step.click_x.unwrap_or_default(),
+                    step.click_y.unwrap_or_default(),
+                    log_optional(&step.process_name)
+                ),
+                Err(error) => eprintln!(
+                    "capture.step event=persist_error session_id={} code={} message={}",
+                    event.session_id, error.code, error.message
+                ),
+            }
+        }
+    });
+
+    sender
+}
+
+fn sanitize_optional_metadata(value: Option<String>, max_chars: usize) -> Option<String> {
+    value
+        .map(|value| truncate_metadata(value.trim(), max_chars))
+        .filter(|value| !value.is_empty())
+}
+
+fn truncate_metadata(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+
+    if chars.next().is_some() && max_chars > 1 {
+        let keep = max_chars.saturating_sub(1);
+        let mut readable: String = truncated.chars().take(keep).collect();
+        readable.push('…');
+        readable
+    } else {
+        truncated
+    }
 }
 
 fn log_optional(value: &Option<String>) -> &str {

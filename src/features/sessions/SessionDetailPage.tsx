@@ -202,8 +202,7 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
           <Card className={styles.emptyCard}>
             <h3>No steps captured yet</h3>
             <p>
-              This session exists, but it has no active steps. Native mouse capture and screenshot capture remain out of
-              scope for Step 4.
+              This session exists, but it has no active steps. Start a recording and click in another application. Accepted native clicks are persisted as metadata-only steps; screenshot capture remains out of scope for Step 8.
             </p>
           </Card>
         )}
@@ -235,10 +234,30 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
                 </div>
 
                 <div className={styles.screenshotPlaceholder}>
-                  <span>No screenshot preview in Step 4</span>
-                  <small>Placeholder original path only: {step.originalScreenshotPath}</small>
+                  <span>Screenshot preview pending — metadata-only Step 8</span>
+                  <small>No screenshot file has been captured or generated yet.</small>
+                  <small>Documented placeholder original path: {step.originalScreenshotPath}</small>
                   {step.editedScreenshotPath ? <small>Edited path: {step.editedScreenshotPath}</small> : null}
                 </div>
+
+                <dl className={styles.stepMetadata}>
+                  <div>
+                    <dt>Click position</dt>
+                    <dd>{formatClickPosition(step)}</dd>
+                  </div>
+                  <div>
+                    <dt>Monitor</dt>
+                    <dd>{step.monitorId ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Application</dt>
+                    <dd title={step.processName ?? undefined}>{step.processName ?? 'Unknown application'}</dd>
+                  </div>
+                  <div>
+                    <dt>Window title</dt>
+                    <dd title={step.appWindowTitle ?? undefined}>{step.appWindowTitle ?? 'Unavailable'}</dd>
+                  </div>
+                </dl>
 
                 <form className={styles.editForm} onSubmit={(event) => handleStepSubmit(step.id, event)}>
                   <label className={styles.field}>
@@ -291,6 +310,14 @@ function stepToDraft(step: RecordingStep): StepDraft {
     title: step.title,
     description: step.description ?? '',
   };
+}
+
+function formatClickPosition(step: RecordingStep): string {
+  if (typeof step.clickX !== 'number' || typeof step.clickY !== 'number') {
+    return 'Unavailable';
+  }
+
+  return `(${step.clickX}, ${step.clickY})`;
 }
 
 function formatValueDate(value: string): string {
