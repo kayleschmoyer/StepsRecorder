@@ -174,9 +174,9 @@ fn draw_click_marker(rgba: &mut [u8], width: u32, height: u32, marker_x: u32, ma
         height,
         marker_x,
         marker_y,
-        30.0,
-        2.0,
-        [255, 240, 204, 150],
+        12.0,
+        1.0,
+        [230, 174, 93, 70],
     );
     draw_ring(
         rgba,
@@ -184,9 +184,19 @@ fn draw_click_marker(rgba: &mut [u8], width: u32, height: u32, marker_x: u32, ma
         height,
         marker_x,
         marker_y,
-        22.0,
-        4.0,
-        [255, 255, 255, 230],
+        8.0,
+        1.5,
+        [255, 255, 255, 185],
+    );
+    draw_ring(
+        rgba,
+        width,
+        height,
+        marker_x,
+        marker_y,
+        8.0,
+        0.75,
+        [180, 110, 48, 135],
     );
     draw_filled_circle(
         rgba,
@@ -194,17 +204,8 @@ fn draw_click_marker(rgba: &mut [u8], width: u32, height: u32, marker_x: u32, ma
         height,
         marker_x,
         marker_y,
-        5.0,
-        [204, 145, 102, 245],
-    );
-    draw_filled_circle(
-        rgba,
-        width,
-        height,
-        marker_x,
-        marker_y,
-        2.0,
-        [255, 255, 255, 245],
+        2.5,
+        [204, 116, 45, 215],
     );
 }
 
@@ -220,24 +221,25 @@ fn draw_ring(
 ) {
     let outer = radius + (stroke_width / 2.0);
     let inner = (radius - (stroke_width / 2.0)).max(0.0);
-    let min_x = (center_x as f32 - outer).floor().max(0.0) as u32;
-    let min_y = (center_y as f32 - outer).floor().max(0.0) as u32;
-    let max_x = (center_x as f32 + outer)
+    let min_x = (center_x as f32 - outer - 1.0).floor().max(0.0) as u32;
+    let min_y = (center_y as f32 - outer - 1.0).floor().max(0.0) as u32;
+    let max_x = (center_x as f32 + outer + 1.0)
         .ceil()
         .min(width.saturating_sub(1) as f32) as u32;
-    let max_y = (center_y as f32 + outer)
+    let max_y = (center_y as f32 + outer + 1.0)
         .ceil()
         .min(height.saturating_sub(1) as f32) as u32;
-    let inner_squared = inner * inner;
-    let outer_squared = outer * outer;
 
     for y in min_y..=max_y {
         for x in min_x..=max_x {
-            let dx = x as f32 - center_x as f32;
-            let dy = y as f32 - center_y as f32;
-            let distance_squared = (dx * dx) + (dy * dy);
-            if distance_squared >= inner_squared && distance_squared <= outer_squared {
-                blend_pixel(rgba, width, x, y, color);
+            let dx = x as f32 + 0.5 - center_x as f32;
+            let dy = y as f32 + 0.5 - center_y as f32;
+            let distance = ((dx * dx) + (dy * dy)).sqrt();
+            let outer_coverage = (outer + 0.5 - distance).clamp(0.0, 1.0);
+            let inner_coverage = (distance - inner + 0.5).clamp(0.0, 1.0);
+            let coverage = outer_coverage.min(inner_coverage);
+            if coverage > 0.0 {
+                blend_pixel_with_coverage(rgba, width, x, y, color, coverage);
             }
         }
     }
@@ -252,25 +254,38 @@ fn draw_filled_circle(
     radius: f32,
     color: [u8; 4],
 ) {
-    let min_x = (center_x as f32 - radius).floor().max(0.0) as u32;
-    let min_y = (center_y as f32 - radius).floor().max(0.0) as u32;
-    let max_x = (center_x as f32 + radius)
+    let min_x = (center_x as f32 - radius - 1.0).floor().max(0.0) as u32;
+    let min_y = (center_y as f32 - radius - 1.0).floor().max(0.0) as u32;
+    let max_x = (center_x as f32 + radius + 1.0)
         .ceil()
         .min(width.saturating_sub(1) as f32) as u32;
-    let max_y = (center_y as f32 + radius)
+    let max_y = (center_y as f32 + radius + 1.0)
         .ceil()
         .min(height.saturating_sub(1) as f32) as u32;
-    let radius_squared = radius * radius;
 
     for y in min_y..=max_y {
         for x in min_x..=max_x {
-            let dx = x as f32 - center_x as f32;
-            let dy = y as f32 - center_y as f32;
-            if (dx * dx) + (dy * dy) <= radius_squared {
-                blend_pixel(rgba, width, x, y, color);
+            let dx = x as f32 + 0.5 - center_x as f32;
+            let dy = y as f32 + 0.5 - center_y as f32;
+            let distance = ((dx * dx) + (dy * dy)).sqrt();
+            let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
+            if coverage > 0.0 {
+                blend_pixel_with_coverage(rgba, width, x, y, color, coverage);
             }
         }
     }
+}
+
+fn blend_pixel_with_coverage(
+    rgba: &mut [u8],
+    width: u32,
+    x: u32,
+    y: u32,
+    mut color: [u8; 4],
+    coverage: f32,
+) {
+    color[3] = (f32::from(color[3]) * coverage).round().clamp(0.0, 255.0) as u8;
+    blend_pixel(rgba, width, x, y, color);
 }
 
 fn blend_pixel(rgba: &mut [u8], width: u32, x: u32, y: u32, color: [u8; 4]) {
