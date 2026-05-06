@@ -189,6 +189,29 @@
   font-weight: var(--font-weight-semibold);
 }
 
+
+.screenshotPreview {
+  display: grid;
+  gap: var(--spacing-8);
+  margin: 0;
+}
+
+.screenshotPreview img {
+  display: block;
+  width: 100%;
+  max-height: 520px;
+  object-fit: contain;
+  border: 1px solid var(--color-ash-text);
+  border-radius: var(--radius-md);
+  background: var(--color-pewter-accent);
+}
+
+.screenshotPreview figcaption {
+  color: var(--color-ash-text);
+  font-size: var(--text-body-sm);
+  overflow-wrap: anywhere;
+}
+
 .field {
   display: grid;
   gap: var(--spacing-8);

@@ -12,8 +12,7 @@ use crate::{
     },
 };
 
-pub const STEP_8_SCREENSHOT_PLACEHOLDER_PATH: &str =
-    "SCREENSHOT_CAPTURE_PENDING_STEP_8_METADATA_ONLY";
+pub const MISSING_SCREENSHOT_PATH: &str = "";
 const APP_WINDOW_TITLE_MAX_CHARS: usize = 200;
 const PROCESS_NAME_MAX_CHARS: usize = 100;
 
@@ -76,7 +75,7 @@ pub fn create_recorded_click_step(
                     event.monitor_id,
                     safe_window_title,
                     safe_process_name,
-                    STEP_8_SCREENSHOT_PLACEHOLDER_PATH
+                    MISSING_SCREENSHOT_PATH
                 ],
             )
             .map_err(to_database_write_error)?;
@@ -86,6 +85,31 @@ pub fn create_recorded_click_step(
     })();
 
     finish_transaction(connection, result)
+}
+
+pub fn update_original_screenshot_path(
+    connection: &Connection,
+    step_id: &str,
+    original_screenshot_path: &str,
+) -> Result<RecordingStep, AppErrorResponse> {
+    if original_screenshot_path.trim().is_empty() {
+        return Err(AppErrorResponse::new(
+            "screenshot_path_empty",
+            "Screenshot path cannot be empty after capture succeeds.",
+        ));
+    }
+
+    connection
+        .execute(
+            "UPDATE recording_steps
+             SET original_screenshot_path = ?1,
+                 updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+             WHERE id = ?2 AND is_deleted = 0",
+            params![original_screenshot_path.trim(), step_id],
+        )
+        .map_err(to_database_write_error)?;
+
+    get_active_step(connection, step_id)
 }
 
 pub fn list_active_steps_for_session(
@@ -329,7 +353,7 @@ fn truncate_metadata(value: &str, max_chars: usize) -> String {
     }
 }
 
-fn get_active_step(
+pub fn get_active_step(
     connection: &Connection,
     step_id: &str,
 ) -> Result<RecordingStep, AppErrorResponse> {

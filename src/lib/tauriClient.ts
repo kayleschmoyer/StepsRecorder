@@ -50,6 +50,16 @@ export interface ListScreenshotEditsInput {
   stepId: string;
 }
 
+export interface GetStepScreenshotPreviewInput {
+  stepId: string;
+}
+
+export interface StepScreenshotPreview {
+  exists: boolean;
+  originalScreenshotPath: string;
+  dataUrl?: string;
+}
+
 export interface ScreenshotEdit {
   id: string;
   stepId: string;
@@ -209,6 +219,10 @@ type StepsRecorderCommands = {
     request: { input: GetSessionInput };
     response: SessionDetail;
   };
+  get_step_screenshot_preview: {
+    request: { input: GetStepScreenshotPreviewInput };
+    response: StepScreenshotPreview;
+  };
   update_session: {
     request: { input: UpdateSessionInput };
     response: RecordingSession;
@@ -265,6 +279,7 @@ export const tauriClient = {
   getRecordingStatus: () => invokeTauriCommand('get_recording_status', undefined),
   listSessions: (input?: ListSessionsInput) => invokeTauriCommand('list_sessions', input ? { input } : undefined),
   getSession: (input: GetSessionInput) => invokeTauriCommand('get_session', { input }),
+  getStepScreenshotPreview: (input: GetStepScreenshotPreviewInput) => invokeTauriCommand('get_step_screenshot_preview', { input }),
   updateSession: (input: UpdateSessionInput) => invokeTauriCommand('update_session', { input }),
   updateStep: (input: UpdateStepInput) => invokeTauriCommand('update_step', { input }),
   deleteStep: (input: DeleteStepInput) => invokeTauriCommand('delete_step', { input }),
