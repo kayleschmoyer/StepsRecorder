@@ -265,3 +265,106 @@
     display: grid;
   }
 }
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-24);
+  background: rgb(12 12 12 / 72%);
+}
+
+.editorModal {
+  display: grid;
+  gap: var(--spacing-16);
+  width: min(1120px, 100%);
+  max-height: min(92vh, 980px);
+  overflow: auto;
+  padding: var(--card-padding);
+  border: 1px solid var(--color-ash-text);
+  border-radius: var(--radius-lg);
+  background: var(--color-charcoal-canvas);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 45%);
+}
+
+.editorHeader {
+  display: flex;
+  gap: var(--spacing-16);
+  align-items: start;
+  justify-content: space-between;
+}
+
+.editorHeader h2 {
+  margin: var(--spacing-6) 0;
+  color: var(--color-pure-white);
+  font-size: var(--text-subheading);
+  line-height: var(--leading-subheading);
+  letter-spacing: var(--tracking-subheading);
+}
+
+.editorHeader p,
+.editorInfo,
+.editorMessage {
+  margin: 0;
+  color: var(--color-silver-text);
+  font-size: var(--text-body-sm);
+  line-height: var(--leading-body-sm);
+  letter-spacing: var(--tracking-body-sm);
+}
+
+.editorToolbar,
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-10);
+  align-items: center;
+}
+
+.editorInfo {
+  display: grid;
+  gap: var(--spacing-6);
+  padding: var(--spacing-12);
+  border: 1px solid var(--color-ash-text);
+  border-radius: var(--radius-md);
+  background: var(--color-pewter-accent);
+  overflow-wrap: anywhere;
+}
+
+.editorCanvasShell {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  padding: var(--spacing-12);
+  border: 1px solid var(--color-ash-text);
+  border-radius: var(--radius-md);
+  background: var(--color-pewter-accent);
+}
+
+.editorCanvasShell p {
+  margin: 0;
+  color: var(--color-white-frost);
+  font-size: var(--text-body-sm);
+}
+
+.editorCanvas {
+  display: block;
+  width: 100%;
+  max-height: 64vh;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--color-charcoal-canvas);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+@media (max-width: 820px) {
+  .editorHeader {
+    display: grid;
+  }
+
+  .modalBackdrop {
+    padding: var(--spacing-12);
+  }
+}

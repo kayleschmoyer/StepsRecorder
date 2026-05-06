@@ -142,6 +142,13 @@ pub struct GetStepScreenshotPreviewInput {
     pub step_id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveEditedScreenshotInput {
+    pub step_id: String,
+    pub screenshot_data_url: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StepScreenshotPreview {

@@ -2,15 +2,16 @@ use base64::{engine::general_purpose, Engine as _};
 use tauri::State;
 
 use crate::{
-    capture::CaptureService,
+    capture::{screenshot::ScreenshotStorage, CaptureService},
     db::AppDatabase,
     models::{
         AppErrorResponse, AppSettings, ClearSeededDataResult, DeleteStepInput, DeleteStepResult,
         ExportHistoryRecord, GetSessionInput, GetStepScreenshotPreviewInput,
         ListExportHistoryInput, ListScreenshotEditsInput, ListSessionsInput, RecordingSession,
-        RecordingStatus, RecordingStep, ReorderStepsInput, ReorderStepsResult, ScreenshotEdit,
-        SessionDetail, SessionSummary, StartRecordingSessionInput, StepScreenshotPreview,
-        StopRecordingSessionInput, UpdateSessionInput, UpdateSettingsInput, UpdateStepInput,
+        RecordingStatus, RecordingStep, ReorderStepsInput, ReorderStepsResult,
+        SaveEditedScreenshotInput, ScreenshotEdit, SessionDetail, SessionSummary,
+        StartRecordingSessionInput, StepScreenshotPreview, StopRecordingSessionInput,
+        UpdateSessionInput, UpdateSettingsInput, UpdateStepInput,
     },
     repositories::{export_history, screenshot_edits, sessions, settings, steps},
 };
@@ -182,7 +183,14 @@ pub fn get_step_screenshot_preview(
         .map(str::trim)
         .filter(|path| !path.is_empty());
     let (preview_path, preview_kind) = match preferred_path {
-        Some(path) if std::path::Path::new(path).exists() => (path.to_string(), "click_marker"),
+        Some(path) if std::path::Path::new(path).exists() => {
+            let kind = if path.ends_with("-edited.png") {
+                "edited"
+            } else {
+                "click_marker"
+            };
+            (path.to_string(), kind)
+        }
         Some(path) => {
             eprintln!(
                 "screenshot.preview event=marked_missing step_id={} edited_path={}",
@@ -223,6 +231,114 @@ pub fn get_step_screenshot_preview(
         preview_kind: preview_kind.to_string(),
         data_url: Some(format!("data:image/png;base64,{encoded}")),
     })
+}
+
+#[tauri::command]
+pub fn save_edited_screenshot(
+    input: SaveEditedScreenshotInput,
+    database: State<'_, AppDatabase>,
+    screenshot_storage: State<'_, ScreenshotStorage>,
+) -> Result<RecordingStep, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    let step = steps::get_active_step(&connection, &input.step_id)?;
+    let original_path = step.original_screenshot_path.trim();
+    if original_path.is_empty() || !std::path::Path::new(original_path).exists() {
+        return Err(AppErrorResponse::new(
+            "screenshot_source_missing",
+            "The original screenshot must exist before an edited screenshot can be saved.",
+        ));
+    }
+
+    let edited_path = screenshot_storage.edited_path_for_step(&step.session_id, step.step_number);
+    write_data_url_png_atomically(&edited_path, &input.screenshot_data_url)?;
+    let edited_path = edited_path.to_string_lossy().to_string();
+    steps::update_edited_screenshot_path(&connection, &step.id, &edited_path)
+}
+
+fn write_data_url_png_atomically(
+    output_path: &std::path::Path,
+    screenshot_data_url: &str,
+) -> Result<(), AppErrorResponse> {
+    let trimmed = screenshot_data_url.trim();
+    let encoded = trimmed
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| {
+            AppErrorResponse::new(
+                "edited_screenshot_invalid_data",
+                "Edited screenshot data must be a PNG data URL.",
+            )
+        })?;
+    let bytes = general_purpose::STANDARD.decode(encoded).map_err(|error| {
+        AppErrorResponse::with_details(
+            "edited_screenshot_decode_error",
+            "The edited screenshot data could not be decoded.",
+            error.to_string(),
+        )
+    })?;
+
+    if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err(AppErrorResponse::new(
+            "edited_screenshot_invalid_png",
+            "Edited screenshots must be saved as PNG images.",
+        ));
+    }
+
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            AppErrorResponse::with_details(
+                "edited_screenshot_directory_error",
+                "The edited screenshot directory could not be created.",
+                error.to_string(),
+            )
+        })?;
+    }
+
+    let temp_path = output_path.with_extension("png.tmp");
+    let backup_path = output_path.with_extension("png.bak");
+    let _ = std::fs::remove_file(&temp_path);
+    let _ = std::fs::remove_file(&backup_path);
+
+    std::fs::write(&temp_path, bytes).map_err(|error| {
+        AppErrorResponse::with_details(
+            "edited_screenshot_write_error",
+            "The edited screenshot file could not be staged.",
+            error.to_string(),
+        )
+    })?;
+
+    let had_existing = output_path.exists();
+    if had_existing {
+        std::fs::rename(output_path, &backup_path).map_err(|error| {
+            let _ = std::fs::remove_file(&temp_path);
+            AppErrorResponse::with_details(
+                "edited_screenshot_replace_error",
+                "The existing edited screenshot could not be prepared for replacement.",
+                error.to_string(),
+            )
+        })?;
+    }
+
+    if let Err(error) = std::fs::rename(&temp_path, output_path) {
+        if had_existing {
+            let _ = std::fs::rename(&backup_path, output_path);
+        }
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(AppErrorResponse::with_details(
+            "edited_screenshot_replace_error",
+            "The edited screenshot file could not be saved.",
+            error.to_string(),
+        ));
+    }
+
+    let _ = std::fs::remove_file(&backup_path);
+    Ok(())
 }
 
 #[tauri::command]
