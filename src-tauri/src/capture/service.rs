@@ -1,13 +1,43 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::{Arc, MutexGuard},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use crate::{
-    capture::{ActiveCaptureSession, CaptureState, SharedCaptureState},
+    capture::{
+        default_capture_adapter, ActiveCaptureSession, CaptureState, SharedCaptureState,
+        SharedCaptureStateHandle,
+    },
     models::AppErrorResponse,
 };
 
-#[derive(Debug, Default)]
 pub struct CaptureService {
-    state: SharedCaptureState,
+    state: SharedCaptureStateHandle,
+    adapter: std::sync::Mutex<Box<dyn CaptureAdapter>>,
+}
+
+pub trait CaptureAdapter: Send {
+    fn start(
+        &mut self,
+        session_id: String,
+        event_sink: CaptureEventSink,
+    ) -> Result<(), AppErrorResponse>;
+
+    fn stop(&mut self, session_id: &str) -> Result<(), AppErrorResponse>;
+}
+
+#[derive(Debug, Clone)]
+pub struct CaptureEventSink {
+    state: SharedCaptureStateHandle,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeClickEvent {
+    pub session_id: String,
+    pub x: i64,
+    pub y: i64,
+    pub timestamp_ms: u128,
+    pub context: ClickContext,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,12 +68,23 @@ pub enum ClickIngestResult {
 
 impl CaptureService {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_adapter(default_capture_adapter())
+    }
+
+    pub(crate) fn with_adapter(adapter: Box<dyn CaptureAdapter>) -> Self {
+        Self {
+            state: Arc::new(SharedCaptureState::default()),
+            adapter: std::sync::Mutex::new(adapter),
+        }
     }
 
     pub fn start(&self, session_id: String, debounce_ms: i64) -> Result<(), AppErrorResponse> {
         let debounce_ms = debounce_ms.max(0) as u64;
         let mut state = self.lock_state()?;
+        let previous_session_id = state
+            .active_session
+            .as_ref()
+            .map(|active| active.session_id.clone());
 
         if let Some(active) = &state.active_session {
             if active.session_id == session_id {
@@ -66,9 +107,29 @@ impl CaptureService {
             last_accepted_click_timestamp_ms: None,
             accepted_clicks: Vec::new(),
         });
+        drop(state);
+
+        if let Some(previous_session_id) =
+            previous_session_id.filter(|previous| previous != &session_id)
+        {
+            self.stop_adapter(&previous_session_id)?;
+        }
+
+        if let Err(error) = self.start_adapter(session_id.clone()) {
+            let mut state = self.lock_state()?;
+            if state
+                .active_session
+                .as_ref()
+                .map(|active| active.session_id.as_str())
+                == Some(session_id.as_str())
+            {
+                state.active_session = None;
+            }
+            return Err(error);
+        }
 
         println!(
-            "capture.lifecycle event=start session_id={} debounce_ms={} mode=placeholder_no_global_hook",
+            "capture.lifecycle event=start session_id={} debounce_ms={} mode=native_click_adapter",
             session_id, debounce_ms
         );
         Ok(())
@@ -80,8 +141,10 @@ impl CaptureService {
             Some(active) if active.session_id == session_id => {
                 let accepted_click_count = active.accepted_clicks.len();
                 state.active_session = None;
+                drop(state);
+                self.stop_adapter(session_id)?;
                 println!(
-                    "capture.lifecycle event=stop session_id={} accepted_placeholder_clicks={}",
+                    "capture.lifecycle event=stop session_id={} accepted_clicks={}",
                     session_id, accepted_click_count
                 );
             }
@@ -106,14 +169,12 @@ impl CaptureService {
         Ok(self.lock_state()?.active_session.is_some())
     }
 
-    /// Internal/test-only placeholder click pipeline.
+    /// Internal click pipeline shared by native adapters and tests.
     ///
-    /// Step 6 intentionally does not install a Windows `WH_MOUSE_LL` hook,
-    /// register Raw Input devices, read foreground window metadata, capture
-    /// screenshots, or write `recording_steps`. Future Windows integration
-    /// should feed native click metadata into this boundary after explicit user
-    /// opt-in and should keep OS-specific API calls outside the recording
-    /// repository layer.
+    /// Step 7 routes Windows-native click metadata through this boundary only
+    /// while a session is active. This method intentionally only stores events
+    /// in process memory and logs decisions; it does not capture screenshots,
+    /// write image files, or persist `recording_steps`.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn ingest_placeholder_click(
         &self,
@@ -123,40 +184,20 @@ impl CaptureService {
         timestamp_ms: u128,
         context: ClickContext,
     ) -> Result<ClickIngestResult, AppErrorResponse> {
-        let session_id = session_id.into();
-        let mut state = self.lock_state()?;
-        let Some(active) = state.active_session.as_mut() else {
-            return Ok(ClickIngestResult::IgnoredInactive);
-        };
-
-        if active.session_id != session_id {
-            return Ok(ClickIngestResult::IgnoredSessionMismatch);
-        }
-
-        if is_duplicate_click(
-            active.last_accepted_click_timestamp_ms,
-            timestamp_ms,
-            active.debounce_ms,
-        ) {
-            println!(
-                "capture.click event=ignored_duplicate session_id={} x={} y={} timestamp_ms={} debounce_ms={}",
-                session_id, x, y, timestamp_ms, active.debounce_ms
-            );
-            return Ok(ClickIngestResult::IgnoredDebounce);
-        }
-
-        active.last_accepted_click_timestamp_ms = Some(timestamp_ms);
-        active.accepted_clicks.push(CapturedClickEvent {
-            session_id,
+        self.ingest_native_click(NativeClickEvent {
+            session_id: session_id.into(),
             x,
             y,
             timestamp_ms,
-            monitor_id: context.monitor_id,
-            active_window_title: context.active_window_title,
-            process_name: context.process_name,
-        });
+            context,
+        })
+    }
 
-        Ok(ClickIngestResult::Accepted)
+    pub(crate) fn ingest_native_click(
+        &self,
+        event: NativeClickEvent,
+    ) -> Result<ClickIngestResult, AppErrorResponse> {
+        CaptureEventSink::new(self.state.clone()).ingest_click(event)
     }
 
     #[cfg_attr(not(test), allow(dead_code))]
@@ -180,15 +221,118 @@ impl CaptureService {
             .unwrap_or_default())
     }
 
-    fn lock_state(&self) -> Result<std::sync::MutexGuard<'_, CaptureState>, AppErrorResponse> {
-        self.state.inner.lock().map_err(|error| {
-            AppErrorResponse::with_details(
-                "capture_state_lock_error",
-                "The click capture service is currently unavailable.",
-                error.to_string(),
-            )
-        })
+    fn start_adapter(&self, session_id: String) -> Result<(), AppErrorResponse> {
+        self.adapter
+            .lock()
+            .map_err(|error| {
+                AppErrorResponse::with_details(
+                    "capture_adapter_lock_error",
+                    "The click capture adapter is currently unavailable.",
+                    error.to_string(),
+                )
+            })?
+            .start(session_id, CaptureEventSink::new(self.state.clone()))
     }
+
+    fn stop_adapter(&self, session_id: &str) -> Result<(), AppErrorResponse> {
+        self.adapter
+            .lock()
+            .map_err(|error| {
+                AppErrorResponse::with_details(
+                    "capture_adapter_lock_error",
+                    "The click capture adapter is currently unavailable.",
+                    error.to_string(),
+                )
+            })?
+            .stop(session_id)
+    }
+
+    fn lock_state(&self) -> Result<MutexGuard<'_, CaptureState>, AppErrorResponse> {
+        lock_capture_state(&self.state)
+    }
+}
+
+impl CaptureEventSink {
+    pub(crate) fn new(state: SharedCaptureStateHandle) -> Self {
+        Self { state }
+    }
+
+    pub fn ingest_click(
+        &self,
+        event: NativeClickEvent,
+    ) -> Result<ClickIngestResult, AppErrorResponse> {
+        ingest_click_into_state(&self.state, event)
+    }
+}
+
+fn ingest_click_into_state(
+    state: &SharedCaptureState,
+    event: NativeClickEvent,
+) -> Result<ClickIngestResult, AppErrorResponse> {
+    let mut state = lock_capture_state(state)?;
+    let Some(active) = state.active_session.as_mut() else {
+        return Ok(ClickIngestResult::IgnoredInactive);
+    };
+
+    if active.session_id != event.session_id {
+        return Ok(ClickIngestResult::IgnoredSessionMismatch);
+    }
+
+    if is_duplicate_click(
+        active.last_accepted_click_timestamp_ms,
+        event.timestamp_ms,
+        active.debounce_ms,
+    ) {
+        println!(
+            "capture.click event=ignored_duplicate session_id={} x={} y={} timestamp_ms={} debounce_ms={} debounce_result=ignored monitor_id={} active_window_title={} process_name={}",
+            event.session_id,
+            event.x,
+            event.y,
+            event.timestamp_ms,
+            active.debounce_ms,
+            log_optional(&event.context.monitor_id),
+            log_optional(&event.context.active_window_title),
+            log_optional(&event.context.process_name)
+        );
+        return Ok(ClickIngestResult::IgnoredDebounce);
+    }
+
+    active.last_accepted_click_timestamp_ms = Some(event.timestamp_ms);
+    active.accepted_clicks.push(CapturedClickEvent {
+        session_id: event.session_id.clone(),
+        x: event.x,
+        y: event.y,
+        timestamp_ms: event.timestamp_ms,
+        monitor_id: event.context.monitor_id.clone(),
+        active_window_title: event.context.active_window_title.clone(),
+        process_name: event.context.process_name.clone(),
+    });
+
+    println!(
+        "capture.click event=accepted session_id={} x={} y={} timestamp_ms={} debounce_ms={} debounce_result=accepted monitor_id={} active_window_title={} process_name={}",
+        event.session_id,
+        event.x,
+        event.y,
+        event.timestamp_ms,
+        active.debounce_ms,
+        log_optional(&event.context.monitor_id),
+        log_optional(&event.context.active_window_title),
+        log_optional(&event.context.process_name)
+    );
+
+    Ok(ClickIngestResult::Accepted)
+}
+
+fn lock_capture_state(
+    state: &SharedCaptureState,
+) -> Result<MutexGuard<'_, CaptureState>, AppErrorResponse> {
+    state.inner.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "capture_state_lock_error",
+            "The click capture service is currently unavailable.",
+            error.to_string(),
+        )
+    })
 }
 
 fn is_duplicate_click(
@@ -208,13 +352,43 @@ fn current_timestamp_ms() -> u128 {
         .unwrap_or_default()
 }
 
+fn log_optional(value: &Option<String>) -> &str {
+    value.as_deref().unwrap_or("<unavailable>")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[derive(Debug, Default)]
+    struct TestAdapter {
+        started: Vec<String>,
+        stopped: Vec<String>,
+    }
+
+    impl CaptureAdapter for TestAdapter {
+        fn start(
+            &mut self,
+            session_id: String,
+            _event_sink: CaptureEventSink,
+        ) -> Result<(), AppErrorResponse> {
+            self.started.push(session_id);
+            Ok(())
+        }
+
+        fn stop(&mut self, session_id: &str) -> Result<(), AppErrorResponse> {
+            self.stopped.push(session_id.to_string());
+            Ok(())
+        }
+    }
+
+    fn test_service() -> CaptureService {
+        CaptureService::with_adapter(Box::new(TestAdapter::default()))
+    }
+
     #[test]
     fn debounce_ignores_clicks_inside_configured_window() {
-        let service = CaptureService::new();
+        let service = test_service();
         service
             .start("session-a".to_string(), 250)
             .expect("start capture");
@@ -242,7 +416,7 @@ mod tests {
 
     #[test]
     fn debounce_accepts_click_at_or_after_configured_window() {
-        let service = CaptureService::new();
+        let service = test_service();
         service
             .start("session-a".to_string(), 250)
             .expect("start capture");
@@ -270,8 +444,8 @@ mod tests {
     }
 
     #[test]
-    fn placeholder_pipeline_requires_active_matching_session() {
-        let service = CaptureService::new();
+    fn pipeline_requires_active_matching_session() {
+        let service = test_service();
         assert_eq!(
             service
                 .ingest_placeholder_click("session-a", 10, 20, 1_000, ClickContext::default())
@@ -287,6 +461,22 @@ mod tests {
                 .ingest_placeholder_click("session-b", 10, 20, 1_000, ClickContext::default())
                 .expect("mismatched click"),
             ClickIngestResult::IgnoredSessionMismatch
+        );
+    }
+
+    #[test]
+    fn stop_prevents_late_click_processing() {
+        let service = test_service();
+        service
+            .start("session-a".to_string(), 0)
+            .expect("start capture");
+        service.stop("session-a").expect("stop capture");
+
+        assert_eq!(
+            service
+                .ingest_placeholder_click("session-a", 10, 20, 1_000, ClickContext::default())
+                .expect("late click"),
+            ClickIngestResult::IgnoredInactive
         );
     }
 }
