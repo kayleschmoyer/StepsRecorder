@@ -45,7 +45,8 @@ pub fn get_settings(connection: &Connection) -> Result<AppSettings, AppErrorResp
         screenshot_mode: values
             .get("screenshot_mode")
             .map(|value| normalize_screenshot_mode(value))
-            .unwrap_or("clicked_monitor"),
+            .unwrap_or("clicked_monitor")
+            .to_string(),
         click_debounce_ms: required_string(&values, "click_debounce_ms")?
             .parse::<i64>()
             .map_err(|_| {
