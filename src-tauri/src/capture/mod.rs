@@ -2,7 +2,7 @@ use std::sync::Mutex;
 
 pub mod service;
 
-pub use service::CaptureService;
+pub use service::{CaptureService, CapturedClickEvent};
 
 #[derive(Debug, Default)]
 pub struct SharedCaptureState {
