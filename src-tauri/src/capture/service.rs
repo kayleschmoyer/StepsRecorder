@@ -1,4 +1,5 @@
 use std::{
+    path::PathBuf,
     sync::{mpsc, Arc, Mutex, MutexGuard},
     thread,
     time::{SystemTime, UNIX_EPOCH},
@@ -8,8 +9,9 @@ use rusqlite::Connection;
 
 use crate::{
     capture::{
-        default_capture_adapter, ActiveCaptureSession, CaptureState, SharedCaptureState,
-        SharedCaptureStateHandle,
+        default_capture_adapter,
+        screenshot::{capture_original_screenshot_for_step, ScreenshotStorage},
+        ActiveCaptureSession, CaptureState, SharedCaptureState, SharedCaptureStateHandle,
     },
     models::AppErrorResponse,
     repositories::steps,
@@ -73,20 +75,26 @@ pub enum ClickIngestResult {
 }
 
 impl CaptureService {
-    pub fn new(database: Arc<Mutex<Connection>>) -> Self {
-        Self::with_adapter_and_database(default_capture_adapter(), Some(database))
+    pub fn new(database: Arc<Mutex<Connection>>, screenshots_root: PathBuf) -> Self {
+        Self::with_adapter_and_database(
+            default_capture_adapter(),
+            Some(database),
+            Some(ScreenshotStorage::new(screenshots_root)),
+        )
     }
 
     #[cfg(test)]
     pub(crate) fn with_adapter(adapter: Box<dyn CaptureAdapter>) -> Self {
-        Self::with_adapter_and_database(adapter, None)
+        Self::with_adapter_and_database(adapter, None, None)
     }
 
     fn with_adapter_and_database(
         adapter: Box<dyn CaptureAdapter>,
         database: Option<Arc<Mutex<Connection>>>,
+        screenshot_storage: Option<ScreenshotStorage>,
     ) -> Self {
-        let step_event_sender = database.map(spawn_step_persistence_worker);
+        let step_event_sender =
+            database.map(|database| spawn_step_persistence_worker(database, screenshot_storage));
 
         Self {
             state: Arc::new(SharedCaptureState::default()),
@@ -190,7 +198,7 @@ impl CaptureService {
     ///
     /// Step 8 routes Windows-native click metadata through this boundary only
     /// while a session is active. Accepted events are forwarded to a service-side
-    /// persistence worker; this method does not capture screenshots or write image files.
+    /// persistence worker; screenshot capture and image writes happen later in that worker.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn ingest_placeholder_click(
         &self,
@@ -409,6 +417,7 @@ fn latest_accepted_click(
 
 fn spawn_step_persistence_worker(
     database: Arc<Mutex<Connection>>,
+    screenshot_storage: Option<ScreenshotStorage>,
 ) -> mpsc::Sender<CapturedClickEvent> {
     let (sender, receiver) = mpsc::channel::<CapturedClickEvent>();
 
@@ -426,15 +435,21 @@ fn spawn_step_persistence_worker(
             };
 
             match steps::create_recorded_click_step(&connection, &event) {
-                Ok(step) => println!(
-                    "capture.step event=created session_id={} step_id={} step_number={} x={} y={} process_name={}",
-                    step.session_id,
-                    step.id,
-                    step.step_number,
-                    step.click_x.unwrap_or_default(),
-                    step.click_y.unwrap_or_default(),
-                    log_optional(&step.process_name)
-                ),
+                Ok(step) => {
+                    println!(
+                        "capture.step event=created session_id={} step_id={} step_number={} x={} y={} process_name={}",
+                        step.session_id,
+                        step.id,
+                        step.step_number,
+                        step.click_x.unwrap_or_default(),
+                        step.click_y.unwrap_or_default(),
+                        log_optional(&step.process_name)
+                    );
+
+                    if let Some(storage) = &screenshot_storage {
+                        capture_and_attach_screenshot(&connection, storage, &event, &step);
+                    }
+                }
                 Err(error) => eprintln!(
                     "capture.step event=persist_error session_id={} code={} message={}",
                     event.session_id, error.code, error.message
@@ -444,6 +459,38 @@ fn spawn_step_persistence_worker(
     });
 
     sender
+}
+
+fn capture_and_attach_screenshot(
+    connection: &Connection,
+    storage: &ScreenshotStorage,
+    event: &CapturedClickEvent,
+    step: &crate::models::RecordingStep,
+) {
+    match capture_original_screenshot_for_step(storage, event, step.step_number) {
+        Ok(capture) => {
+            let path = capture.path.to_string_lossy().to_string();
+            match steps::update_original_screenshot_path(connection, &step.id, &path) {
+                Ok(updated_step) => println!(
+                    "capture.screenshot event=written session_id={} step_id={} step_number={} width={} height={} path={}",
+                    updated_step.session_id,
+                    updated_step.id,
+                    updated_step.step_number,
+                    capture.width,
+                    capture.height,
+                    path
+                ),
+                Err(error) => eprintln!(
+                    "capture.screenshot event=path_update_error session_id={} step_id={} code={} message={}",
+                    step.session_id, step.id, error.code, error.message
+                ),
+            }
+        }
+        Err(error) => eprintln!(
+            "capture.screenshot event=capture_error session_id={} step_id={} step_number={} code={} message={}",
+            step.session_id, step.id, step.step_number, error.code, error.message
+        ),
+    }
 }
 
 fn sanitize_optional_metadata(value: Option<String>, max_chars: usize) -> Option<String> {

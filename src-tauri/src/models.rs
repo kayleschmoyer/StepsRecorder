@@ -138,6 +138,20 @@ pub struct ListScreenshotEditsInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GetStepScreenshotPreviewInput {
+    pub step_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepScreenshotPreview {
+    pub exists: bool,
+    pub original_screenshot_path: String,
+    pub data_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ListExportHistoryInput {
     pub session_id: String,
 }

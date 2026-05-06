@@ -202,7 +202,7 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
           <Card className={styles.emptyCard}>
             <h3>No steps captured yet</h3>
             <p>
-              This session exists, but it has no active steps. Start a recording and click in another application. Accepted native clicks are persisted as metadata-only steps; screenshot capture remains out of scope for Step 8.
+              This session exists, but it has no active steps. Start a recording and click in another application. Accepted native clicks are persisted with visible-monitor screenshots when capture succeeds.
             </p>
           </Card>
         )}
@@ -233,12 +233,7 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
                   </div>
                 </div>
 
-                <div className={styles.screenshotPlaceholder}>
-                  <span>Screenshot preview pending — metadata-only Step 8</span>
-                  <small>No screenshot file has been captured or generated yet.</small>
-                  <small>Documented placeholder original path: {step.originalScreenshotPath}</small>
-                  {step.editedScreenshotPath ? <small>Edited path: {step.editedScreenshotPath}</small> : null}
-                </div>
+                <StepScreenshotPreviewPanel step={step} />
 
                 <dl className={styles.stepMetadata}>
                   <div>
@@ -299,6 +294,81 @@ export function SessionDetailPage({ sessionId }: SessionDetailPageProps) {
       },
     }));
   }
+}
+
+
+type ScreenshotPreviewState =
+  | { status: 'missing'; dataUrl?: undefined }
+  | { status: 'loading'; dataUrl?: undefined }
+  | { status: 'ready'; dataUrl: string }
+  | { status: 'error'; dataUrl?: undefined };
+
+function StepScreenshotPreviewPanel({ step }: { step: RecordingStep }) {
+  const [preview, setPreview] = useState<ScreenshotPreviewState>({
+    status: step.originalScreenshotPath.trim().length > 0 ? 'loading' : 'missing',
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (step.originalScreenshotPath.trim().length === 0) {
+      setPreview({ status: 'missing' });
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setPreview({ status: 'loading' });
+    tauriClient
+      .getStepScreenshotPreview({ stepId: step.id })
+      .then((result) => {
+        if (!isMounted) {
+          return;
+        }
+
+        if (result.exists && result.dataUrl) {
+          setPreview({ status: 'ready', dataUrl: result.dataUrl });
+        } else {
+          setPreview({ status: 'missing' });
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setPreview({ status: 'error' });
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [step.id, step.originalScreenshotPath]);
+
+  if (preview.status === 'ready') {
+    return (
+      <figure className={styles.screenshotPreview}>
+        <img src={preview.dataUrl} alt={`Visible monitor screenshot for step ${step.stepNumber}`} />
+        <figcaption>Original screenshot: {step.originalScreenshotPath}</figcaption>
+      </figure>
+    );
+  }
+
+  const message = preview.status === 'loading'
+    ? 'Loading screenshot preview…'
+    : preview.status === 'error'
+      ? 'Screenshot preview could not be loaded.'
+      : 'Screenshot missing or capture failed.';
+
+  return (
+    <div className={styles.screenshotPlaceholder}>
+      <span>{message}</span>
+      <small>
+        {step.originalScreenshotPath.trim().length > 0
+          ? `Expected original path: ${step.originalScreenshotPath}`
+          : 'No original screenshot path has been stored for this step yet.'}
+      </small>
+      {step.editedScreenshotPath ? <small>Edited path: {step.editedScreenshotPath}</small> : null}
+    </div>
+  );
 }
 
 function createStepDrafts(steps: RecordingStep[]): StepDrafts {

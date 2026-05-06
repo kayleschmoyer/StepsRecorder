@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+pub mod screenshot;
 pub mod service;
 
 #[cfg(windows)]

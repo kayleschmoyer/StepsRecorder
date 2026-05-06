@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose, Engine as _};
 use tauri::State;
 
 use crate::{
@@ -5,11 +6,11 @@ use crate::{
     db::AppDatabase,
     models::{
         AppErrorResponse, AppSettings, ClearSeededDataResult, DeleteStepInput, DeleteStepResult,
-        ExportHistoryRecord, GetSessionInput, ListExportHistoryInput, ListScreenshotEditsInput,
-        ListSessionsInput, RecordingSession, RecordingStatus, RecordingStep, ReorderStepsInput,
-        ReorderStepsResult, ScreenshotEdit, SessionDetail, SessionSummary,
-        StartRecordingSessionInput, StopRecordingSessionInput, UpdateSessionInput,
-        UpdateSettingsInput, UpdateStepInput,
+        ExportHistoryRecord, GetSessionInput, GetStepScreenshotPreviewInput,
+        ListExportHistoryInput, ListScreenshotEditsInput, ListSessionsInput, RecordingSession,
+        RecordingStatus, RecordingStep, ReorderStepsInput, ReorderStepsResult, ScreenshotEdit,
+        SessionDetail, SessionSummary, StartRecordingSessionInput, StepScreenshotPreview,
+        StopRecordingSessionInput, UpdateSessionInput, UpdateSettingsInput, UpdateStepInput,
     },
     repositories::{export_history, screenshot_edits, sessions, settings, steps},
 };
@@ -146,6 +147,56 @@ pub fn get_session(
     })?;
 
     sessions::get_session(&connection, &input.session_id)
+}
+
+#[tauri::command]
+pub fn get_step_screenshot_preview(
+    input: GetStepScreenshotPreviewInput,
+    database: State<'_, AppDatabase>,
+) -> Result<StepScreenshotPreview, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    let step = steps::get_active_step(&connection, &input.step_id)?;
+    drop(connection);
+
+    if step.original_screenshot_path.trim().is_empty() {
+        return Ok(StepScreenshotPreview {
+            exists: false,
+            original_screenshot_path: step.original_screenshot_path,
+            data_url: None,
+        });
+    }
+
+    let bytes = match std::fs::read(&step.original_screenshot_path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(StepScreenshotPreview {
+                exists: false,
+                original_screenshot_path: step.original_screenshot_path,
+                data_url: None,
+            });
+        }
+        Err(error) => {
+            return Err(AppErrorResponse::with_details(
+                "screenshot_preview_read_error",
+                "The screenshot preview file could not be read.",
+                error.to_string(),
+            ));
+        }
+    };
+
+    let encoded = general_purpose::STANDARD.encode(bytes);
+    Ok(StepScreenshotPreview {
+        exists: true,
+        original_screenshot_path: step.original_screenshot_path,
+        data_url: Some(format!("data:image/png;base64,{encoded}")),
+    })
 }
 
 #[tauri::command]
