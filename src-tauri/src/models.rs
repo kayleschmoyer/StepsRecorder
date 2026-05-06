@@ -106,6 +106,30 @@ pub struct ClearSeededDataResult {
     pub deleted_steps: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordingStatus {
+    pub is_recording: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elapsed_seconds: Option<i64>,
+    pub step_count: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartRecordingSessionInput {
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StopRecordingSessionInput {
+    pub session_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListScreenshotEditsInput {

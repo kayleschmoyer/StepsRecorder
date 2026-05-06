@@ -5,9 +5,10 @@ use crate::{
     models::{
         AppErrorResponse, AppSettings, ClearSeededDataResult, DeleteStepInput, DeleteStepResult,
         ExportHistoryRecord, GetSessionInput, ListExportHistoryInput, ListScreenshotEditsInput,
-        ListSessionsInput, RecordingSession, RecordingStep, ReorderStepsInput, ReorderStepsResult,
-        ScreenshotEdit, SessionDetail, SessionSummary, UpdateSessionInput, UpdateSettingsInput,
-        UpdateStepInput,
+        ListSessionsInput, RecordingSession, RecordingStatus, RecordingStep, ReorderStepsInput,
+        ReorderStepsResult, ScreenshotEdit, SessionDetail, SessionSummary,
+        StartRecordingSessionInput, StopRecordingSessionInput, UpdateSessionInput,
+        UpdateSettingsInput, UpdateStepInput,
     },
     repositories::{export_history, screenshot_edits, sessions, settings, steps},
 };
@@ -44,6 +45,53 @@ pub fn update_settings(
     })?;
 
     settings::update_settings(&connection, input)
+}
+
+#[tauri::command]
+pub fn start_recording_session(
+    input: StartRecordingSessionInput,
+    database: State<'_, AppDatabase>,
+) -> Result<RecordingSession, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    sessions::start_recording_session(&connection, input)
+}
+
+#[tauri::command]
+pub fn stop_recording_session(
+    input: StopRecordingSessionInput,
+    database: State<'_, AppDatabase>,
+) -> Result<RecordingSession, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    sessions::stop_recording_session(&connection, input)
+}
+
+#[tauri::command]
+pub fn get_recording_status(
+    database: State<'_, AppDatabase>,
+) -> Result<RecordingStatus, AppErrorResponse> {
+    let connection = database.connection.lock().map_err(|error| {
+        AppErrorResponse::with_details(
+            "database_lock_error",
+            "The local app database is currently unavailable.",
+            error.to_string(),
+        )
+    })?;
+
+    sessions::get_recording_status(&connection)
 }
 
 #[tauri::command]
