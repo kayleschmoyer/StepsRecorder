@@ -10,14 +10,50 @@ fn main() {
 }
 
 fn ensure_generated_icon() {
-    let icon_path = Path::new("icons/icon.png");
+    let icon_dir = Path::new("icons");
+    let png_path = icon_dir.join("icon.png");
+    let ico_path = icon_dir.join("icon.ico");
 
-    if icon_path.exists() {
+    if png_path.exists() && ico_path.exists() {
         return;
     }
 
-    fs::create_dir_all("icons").expect("failed to create Tauri icons directory");
-    fs::write(icon_path, create_icon_png()).expect("failed to write generated Tauri icon");
+    fs::create_dir_all(icon_dir).expect("failed to create Tauri icons directory");
+
+    let icon_png = create_icon_png();
+
+    if !png_path.exists() {
+        fs::write(&png_path, &icon_png).expect("failed to write generated Tauri PNG icon");
+    }
+
+    if !ico_path.exists() {
+        fs::write(&ico_path, create_icon_ico(&icon_png))
+            .expect("failed to write generated Tauri ICO icon");
+    }
+}
+
+fn create_icon_ico(png_data: &[u8]) -> Vec<u8> {
+    const ICO_HEADER_SIZE: u32 = 6;
+    const ICO_ENTRY_SIZE: u32 = 16;
+
+    let image_offset = ICO_HEADER_SIZE + ICO_ENTRY_SIZE;
+    let image_size = u32::try_from(png_data.len()).expect("generated icon data is too large");
+    let icon_dimension = u8::try_from(ICON_SIZE).expect("generated icon dimension is too large");
+
+    let mut ico = Vec::with_capacity(image_offset as usize + png_data.len());
+    ico.extend_from_slice(&0_u16.to_le_bytes());
+    ico.extend_from_slice(&1_u16.to_le_bytes());
+    ico.extend_from_slice(&1_u16.to_le_bytes());
+    ico.push(icon_dimension);
+    ico.push(icon_dimension);
+    ico.push(0);
+    ico.push(0);
+    ico.extend_from_slice(&1_u16.to_le_bytes());
+    ico.extend_from_slice(&32_u16.to_le_bytes());
+    ico.extend_from_slice(&image_size.to_le_bytes());
+    ico.extend_from_slice(&image_offset.to_le_bytes());
+    ico.extend_from_slice(png_data);
+    ico
 }
 
 fn create_icon_png() -> Vec<u8> {
